@@ -149,7 +149,19 @@ public class Arena {
 
 				item.setItemMeta(meta);
 
-				p.getInventory().setItem(config.getInt(itemPath + ".Slot"), item);
+				int slot = config.getInt(itemPath + ".Slot");
+
+				// If config is using Bukkit armor indices:
+				if (slot == 39) { p.getInventory().setHelmet(item); continue; }
+				if (slot == 38) { p.getInventory().setChestplate(item); continue; }
+				if (slot == 37) { p.getInventory().setLeggings(item); continue; }
+				if (slot == 36) { p.getInventory().setBoots(item); continue; }
+				// Offhand
+				if (slot == 40) { p.getInventory().setItemInOffHand(item); continue; }
+
+
+				p.getInventory().setItem(slot, item);
+
 			}
 		}
 	}
