@@ -29,6 +29,10 @@ import org.bukkit.potion.PotionEffectType;
 
 public class Toolkit {
 
+	public static boolean isEmpty(ItemStack stack) {
+		return stack == null || stack.getType().isAir();
+	}
+
 	private static final Material FALLBACK_MATERIAL = Material.BEDROCK;
 
 	public static boolean inArena(World world) {

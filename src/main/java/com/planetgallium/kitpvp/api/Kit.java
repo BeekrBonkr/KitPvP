@@ -9,7 +9,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-
+import org.bukkit.Material;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.PlayerInventory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -101,56 +103,58 @@ public class Kit {
         List<ItemStack> overflowItems = new ArrayList<>();
         boolean addOverflowItems = (Boolean) options.get("AddOverflowItemsOnKit");
 
+        PlayerInventory inv = player.getInventory();
+
         if (kitHelmet != null) {
-            if (player.getInventory().getHelmet() == null) {
-                player.getInventory().setHelmet(kitHelmet);
-            } else {
-                overflowItems.add(kitHelmet);
+            ItemStack current = inv.getHelmet();
+            if (addOverflowItems && !Toolkit.isEmpty(current)) {
+                overflowItems.add(current);
             }
+            inv.setHelmet(kitHelmet);
         }
 
         if (kitChestplate != null) {
-            if (player.getInventory().getChestplate() == null) {
-                player.getInventory().setChestplate(kitChestplate);
-            } else {
-                overflowItems.add(kitChestplate);
+            ItemStack current = inv.getChestplate();
+            if (addOverflowItems && !Toolkit.isEmpty(current)) {
+                overflowItems.add(current);
             }
+            inv.setChestplate(kitChestplate);
         }
 
         if (kitLeggings != null) {
-            if (player.getInventory().getLeggings() == null) {
-                player.getInventory().setLeggings(kitLeggings);
-            } else {
-                overflowItems.add(kitLeggings);
+            ItemStack current = inv.getLeggings();
+            if (addOverflowItems && !Toolkit.isEmpty(current)) {
+                overflowItems.add(current);
             }
+            inv.setLeggings(kitLeggings);
         }
 
         if (kitBoots != null) {
-            if (player.getInventory().getBoots() == null) {
-                player.getInventory().setBoots(kitBoots);
-            } else {
-                overflowItems.add(kitBoots);
+            ItemStack current = inv.getBoots();
+            if (addOverflowItems && !Toolkit.isEmpty(current)) {
+                overflowItems.add(current);
             }
+            inv.setBoots(kitBoots);
         }
 
         Toolkit.setMaxHealth(player, maxHealth);
 
         for (int i = 0; i < 36; i++) {
             if (addOverflowItems) {
-                // if kit wants to put an item in slot i, but slot i in player inventory is already taken
-                if (inventory.containsKey(i) && player.getInventory().getItem(i) != null) {
-                    overflowItems.add(inventory.get(i)); // add kit item to overflow items
-                    continue; // ignore this kit item, will be accounted for with giveOverflowItems
+                if (inventory.containsKey(i) && !Toolkit.isEmpty(inv.getItem(i))) {
+                    overflowItems.add(inventory.get(i));
+                    continue;
                 }
             }
 
-            if (inventory.get(i) != null) {
-                player.getInventory().setItem(i, inventory.get(i));
+            ItemStack kitItem = inventory.get(i);
+            if (kitItem != null) {
+                inv.setItem(i, kitItem);
             }
         }
 
         if (offhand != null && Toolkit.versionToNumber() >= 19) {
-            player.getInventory().setItemInOffHand(offhand);
+            inv.setItemInOffHand(offhand);
         }
 
         if (addOverflowItems) {
@@ -159,18 +163,69 @@ public class Kit {
 
         if (fill != null) {
             for (int i = 0; i < 36; i++) {
-                if (player.getInventory().getItem(i) == null) {
-                    player.getInventory().setItem(i, fill);
+                if (Toolkit.isEmpty(inv.getItem(i))) {
+                    inv.setItem(i, fill);
                 }
             }
         }
 
-        effects.stream().forEach(effect -> player.addPotionEffect(effect));
+        // last: make absolutely sure kit armor is equipped (and not left in inventory)
+        forceEquipArmor(player);
+        
+        effects.forEach(player::addPotionEffect);
+    }
+
+    private void forceEquipArmor(Player player) {
+        PlayerInventory inv = player.getInventory();
+
+        ItemStack helmet = getHelmet();
+        ItemStack chest = getChestplate();
+        ItemStack legs = getLeggings();
+        ItemStack boots = getBoots();
+
+        if (helmet != null && !helmet.getType().isAir()) {
+            inv.setHelmet(helmet);
+            removeFirstMatching(inv, helmet);
+        }
+        if (chest != null && !chest.getType().isAir()) {
+            inv.setChestplate(chest);
+            removeFirstMatching(inv, chest);
+        }
+        if (legs != null && !legs.getType().isAir()) {
+            inv.setLeggings(legs);
+            removeFirstMatching(inv, legs);
+        }
+        if (boots != null && !boots.getType().isAir()) {
+            inv.setBoots(boots);
+            removeFirstMatching(inv, boots);
+        }
+    }
+
+    private void removeFirstMatching(PlayerInventory inv, ItemStack needle) {
+        for (int i = 0; i < 36; i++) {
+            ItemStack s = inv.getItem(i);
+            if (Toolkit.isEmpty(s)) continue;
+
+            if (s.isSimilar(needle)) {
+                inv.setItem(i, new ItemStack(Material.AIR));
+                return;
+            }
+
+            if (s.getType() == needle.getType()) {
+                ItemMeta sm = s.getItemMeta();
+                ItemMeta nm = needle.getItemMeta();
+                if (sm != null && nm != null && sm.hasDisplayName() && nm.hasDisplayName()
+                        && sm.getDisplayName().equals(nm.getDisplayName())) {
+                    inv.setItem(i, new ItemStack(Material.AIR));
+                    return;
+                }
+            }
+        }
     }
 
     private void giveOverflowItems(Player p, List<ItemStack> overflowItems) {
         for (int i = 0; i < 36; i++) {
-            if (p.getInventory().getItem(i) == null) { // if empty slot found
+            if (Toolkit.isEmpty(p.getInventory().getItem(i))) { // if empty slot found
                 if (overflowItems.size() >= 1) {
                     p.getInventory().setItem(i, overflowItems.get(0));
                     overflowItems.remove(0);
