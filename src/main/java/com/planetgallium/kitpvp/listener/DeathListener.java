@@ -1,27 +1,29 @@
 package com.planetgallium.kitpvp.listener;
 
-import com.cryptomorin.xseries.XSound;
 import com.cryptomorin.xseries.messages.Titles;
-import com.planetgallium.kitpvp.util.*;
+import com.planetgallium.kitpvp.Game;
+import com.planetgallium.kitpvp.game.Arena;
+import com.planetgallium.kitpvp.util.CacheManager;
+import com.planetgallium.kitpvp.util.Resource;
+import com.planetgallium.kitpvp.util.Resources;
+import com.planetgallium.kitpvp.util.Toolkit;
 import org.bukkit.Effect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
-import org.bukkit.Sound;
 import org.bukkit.World;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
-
-import com.planetgallium.kitpvp.Game;
-import com.planetgallium.kitpvp.game.Arena;
 
 import java.util.List;
 
@@ -31,7 +33,7 @@ public class DeathListener implements Listener {
 	private final Arena arena;
 	private final Resources resources;
 	private final Resource config;
-	
+
 	public DeathListener(Game plugin) {
 		this.plugin = plugin;
 		this.arena = plugin.getArena();
@@ -41,9 +43,7 @@ public class DeathListener implements Listener {
 
 	@EventHandler
 	public void onDeath(PlayerDeathEvent e) {
-		// investigate possible memory leak when FancyDeath is enabled
 		if (Toolkit.inArena(e.getEntity())) {
-
 			Player victim = e.getEntity();
 			e.setDeathMessage("");
 
@@ -70,29 +70,40 @@ public class DeathListener implements Listener {
 					config.fetchString("Death.Sound.Sound"),
 					config.getInt("Death.Sound.Pitch"));
 		}
-
 	}
 
 	@EventHandler
 	public void onRespawn(PlayerRespawnEvent e) {
-		if (Toolkit.inArena(e.getPlayer())) {
-			if (!config.getBoolean("Arena.FancyDeath")) {
-				Player p = e.getPlayer();
+		if (!Toolkit.inArena(e.getPlayer())) return;
+		if (config.getBoolean("Arena.FancyDeath")) return;
 
-				new BukkitRunnable() {
-					@Override
-					public void run() {
-						arena.toSpawn(p, p.getWorld().getName());
-					}
-				}.runTaskLater(plugin, 1L);
+		Player p = e.getPlayer();
+
+		GameMode respawnGm = Toolkit.getConfiguredGameMode(
+				plugin.getResources().getConfig(),
+				"Respawn.RespawnGameMode",
+				GameMode.ADVENTURE
+		);
+
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				p.setGameMode(respawnGm);
+				arena.toSpawn(p, p.getWorld().getName());
 			}
-		}
+		}.runTaskLater(plugin, 1L);
 	}
 
 	private void respawnPlayer(Player victim) {
 		if (!victim.isOnline()) {
 			return;
 		}
+
+		GameMode respawnGm = Toolkit.getConfiguredGameMode(
+				plugin.getResources().getConfig(),
+				"Respawn.RespawnGameMode",
+				GameMode.ADVENTURE
+		);
 
 		if (config.getBoolean("Arena.FancyDeath")) {
 			Location deathLocation = victim.getLocation();
@@ -107,7 +118,7 @@ public class DeathListener implements Listener {
 			}.runTaskLater(plugin, 1L);
 
 			arena.removePlayer(victim);
-			
+
 			new BukkitRunnable() {
 				int time = config.getInt("Death.Title.Time");
 
@@ -124,6 +135,7 @@ public class DeathListener implements Listener {
 						doClearInventoryOnRespawnIfEnabled(victim);
 
 						arena.addPlayer(victim, true, config.getBoolean("Arena.GiveItemsOnRespawn"));
+						victim.setGameMode(respawnGm);
 
 						victim.sendMessage(config.fetchString("Death.Title.Message"));
 						victim.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 30, 0));
@@ -144,6 +156,8 @@ public class DeathListener implements Listener {
 				@Override
 				public void run() {
 					arena.addPlayer(victim, true, config.getBoolean("Arena.GiveItemsOnRespawn"));
+					victim.setGameMode(respawnGm);
+
 					Toolkit.runCommands(victim, config.getStringList("Respawn.Commands"),
 							"none", "none");
 				}
@@ -166,18 +180,13 @@ public class DeathListener implements Listener {
 			return;
 		}
 
-		DamageCause cause = victim.getLastDamageCause().getCause();
+		EntityDamageEvent.DamageCause cause = victim.getLastDamageCause().getCause();
 
-		if (cause == DamageCause.PROJECTILE && getShooter(victim.getLastDamageCause()).getType() == EntityType.PLAYER) {
+		if (cause == EntityDamageEvent.DamageCause.PROJECTILE && getShooter(victim.getLastDamageCause()).getType() == EntityType.PLAYER) {
 			Player killer = (Player) getShooter(victim.getLastDamageCause());
 
 			broadcast(victim.getWorld(), getDeathMessage(victim, killer, "Shot"));
 			creditWithKill(victim, killer);
-
-//		} else if (cause == DamageCause.ENTITY_ATTACK) {
-//
-//			broadcast(victim.getWorld(), config.fetchString("Death.Messages.Player").replace("%victim%", victim.getName()).replace("%killer%", victim.getKiller().getName()));
-//			creditWithKill(victim, victim.getKiller());
 
 		} else if (victim.getKiller() != null) {
 			Player killer = victim.getKiller();
@@ -192,7 +201,7 @@ public class DeathListener implements Listener {
 			broadcast(victim.getWorld(), getDeathMessage(victim, killer, "Player"));
 			creditWithKill(victim, killer);
 
-		} else if ((cause == DamageCause.BLOCK_EXPLOSION || cause == DamageCause.ENTITY_EXPLOSION) &&
+		} else if ((cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) &&
 				getExplodedEntity(victim.getLastDamageCause()).getType() == EntityType.PRIMED_TNT) {
 			String bomberName = getExplodedEntity(victim.getLastDamageCause()).getCustomName();
 			Player killer = Toolkit.getPlayer(victim.getWorld(), bomberName);
@@ -200,39 +209,32 @@ public class DeathListener implements Listener {
 			broadcast(victim.getWorld(), getDeathMessage(victim, killer, "Player"));
 			creditWithKill(victim, killer);
 
-		} else if (cause == DamageCause.VOID) {
+		} else if (cause == EntityDamageEvent.DamageCause.VOID) {
 			broadcast(victim.getWorld(), getDeathMessage(victim, null, "Void"));
 
-		} else if (cause == DamageCause.FALL) {
+		} else if (cause == EntityDamageEvent.DamageCause.FALL) {
 			broadcast(victim.getWorld(), getDeathMessage(victim, null, "Fall"));
 
-		} else if (cause == DamageCause.FIRE || cause == DamageCause.FIRE_TICK || cause == DamageCause.LAVA) {
+		} else if (cause == EntityDamageEvent.DamageCause.FIRE || cause == EntityDamageEvent.DamageCause.FIRE_TICK || cause == EntityDamageEvent.DamageCause.LAVA) {
 			broadcast(victim.getWorld(), getDeathMessage(victim, null, "Fire"));
 
-		} else if (cause == DamageCause.BLOCK_EXPLOSION || cause == DamageCause.ENTITY_EXPLOSION) {
+		} else if (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
 			broadcast(victim.getWorld(), getDeathMessage(victim, null, "Explosion"));
 
 		} else {
 			broadcast(victim.getWorld(), getDeathMessage(victim, null, "Unknown"));
-
 		}
 	}
 
 	private Entity getShooter(EntityDamageEvent e) {
 		EntityDamageByEntityEvent shotEvent = (EntityDamageByEntityEvent) e;
 		Projectile damager = (Projectile) shotEvent.getDamager();
-
 		return (Entity) damager.getShooter();
 	}
 
 	private Entity getExplodedEntity(EntityDamageEvent e) {
-//		if (e instanceof EntityDamageByBlockEvent) {
-//			EntityDamageByBlockEvent blownUpEvent2 = (EntityDamageByBlockEvent) e;
-//			return blownUpEvent2.getDamager();
-		/*} else if (e instanceof EntityDamageByEntityEvent) { */
-			EntityDamageByEntityEvent blownUpEvent = (EntityDamageByEntityEvent) e;
-			return blownUpEvent.getDamager();
-		/*}*/
+		EntityDamageByEntityEvent blownUpEvent = (EntityDamageByEntityEvent) e;
+		return blownUpEvent.getDamager();
 	}
 
 	private void creditWithKill(Player victim, Player killer) {
@@ -270,7 +272,7 @@ public class DeathListener implements Listener {
 			deathMessage = deathMessage.replace("%killer%", killer.getName())
 					.replace("%killer_health%", String.valueOf(Toolkit.round(killer.getHealth(), 2)));
 		} else {
-			deathMessage = config.fetchString("Death.Messages.Unknown"); // if killer is null (left the server, or some other unknown reason)
+			deathMessage = config.fetchString("Death.Messages.Unknown");
 		}
 
 		if (victim != null) {
@@ -295,5 +297,4 @@ public class DeathListener implements Listener {
 			}
 		}
 	}
-
 }

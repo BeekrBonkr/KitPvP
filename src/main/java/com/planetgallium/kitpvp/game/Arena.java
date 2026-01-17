@@ -71,7 +71,11 @@ public class Arena {
 			p.setFireTicks(0);
 		}
 
-		p.setGameMode(GameMode.SURVIVAL);
+		p.setGameMode(Toolkit.getConfiguredGameMode(
+				Game.getInstance().getResources().getConfig(),
+				"Arena.GameMode",
+				GameMode.ADVENTURE
+		));
 
 		if (config.getBoolean("Arena.ResetMaxHealthOnDeath")) {
 			Toolkit.setMaxHealth(p, 20);

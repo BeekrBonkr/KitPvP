@@ -65,6 +65,7 @@ Death:
     Enabled: true
 Respawn:
   Commands: []
+  RespawnGameMode: ADVENTURE
 PlayerTracker:
   Name: '&aPlayer Tracker'
   Message: '&b&lTarget: &3%nearestplayer% &b&lDistance: &3%distance%'
@@ -116,6 +117,7 @@ Arena:
   PreventDeathDrops: true
   PreventArenaSignUseWithKit: true
   KeepWeatherAtSunny: true
+  GameMode: ADVENTURE
   GiveItemsOnClear: true
   GiveItemsOnRespawn: true
   GiveItemsOnJoin: true

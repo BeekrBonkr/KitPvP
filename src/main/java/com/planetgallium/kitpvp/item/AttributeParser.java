@@ -11,11 +11,18 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.*;
-import org.bukkit.potion.*;
+import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.potion.Potion;
+import org.bukkit.potion.PotionData;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.potion.PotionType;
 
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.*;
 
 public class AttributeParser {
@@ -167,22 +174,45 @@ public class AttributeParser {
         }
     }
 
-    private static void setUnbreakable(ItemStack item) throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
-        if (Toolkit.versionToNumber() <= 114) {
-            ItemMeta meta = item.getItemMeta();
+    /**
+     * Sets the unbreakable flag on an item using the modern API first,
+     * with legacy fallbacks for older server versions.
+     */
+    private static void setUnbreakable(ItemStack item) {
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
 
-            Method spigotMethod = meta.getClass().getMethod("spigot");
-            spigotMethod.setAccessible(true);
+        setUnbreakable(meta, true);
+        item.setItemMeta(meta);
+    }
 
-            Object spigotInstance = spigotMethod.invoke(meta);
-            Class spigotClass = spigotInstance.getClass();
+    private static void setUnbreakable(ItemMeta meta, boolean unbreakable) {
+        // Modern API (works on Paper/Spigot 1.21.5+)
+        try {
+            meta.setUnbreakable(unbreakable);
+            return;
+        } catch (NoSuchMethodError ignored) {
+            // Very old API - keep going
+        }
 
-            Method setUnbreakableMethod = spigotClass.getDeclaredMethod("setUnbreakable", boolean.class);
-            setUnbreakableMethod.setAccessible(true);
+        // Legacy fallback: reflect setUnbreakable on the concrete meta class
+        try {
+            java.lang.reflect.Method m = meta.getClass().getMethod("setUnbreakable", boolean.class);
+            m.invoke(meta, unbreakable);
+            return;
+        } catch (Throwable ignored) {
+            // Keep going
+        }
 
-            setUnbreakableMethod.invoke(spigotInstance, true);
-        } else if (Toolkit.versionToNumber() > 114) {
-            item.getItemMeta().setUnbreakable(true);
+        // Very old Spigot fallback: meta.spigot().setUnbreakable(...)
+        // NOTE: This is the thing that breaks on 1.21.5+, so it must be LAST.
+        try {
+            java.lang.reflect.Method spigot = meta.getClass().getMethod("spigot");
+            Object spigotMeta = spigot.invoke(meta);
+            java.lang.reflect.Method m = spigotMeta.getClass().getMethod("setUnbreakable", boolean.class);
+            m.invoke(spigotMeta, unbreakable);
+        } catch (Throwable ignored) {
+            // Give up silently to avoid log spam on modern servers
         }
     }
 
@@ -248,11 +278,20 @@ public class AttributeParser {
 
     private static int getVanillaLevel(PotionType type, boolean isUpgraded) {
         switch (type) {
-            case INVISIBILITY: case FIRE_RESISTANCE: case NIGHT_VISION:
-                case SLOWNESS: case WATER_BREATHING: case WEAKNESS:
+            case INVISIBILITY:
+            case FIRE_RESISTANCE:
+            case NIGHT_VISION:
+            case SLOWNESS:
+            case WATER_BREATHING:
+            case WEAKNESS:
                 return 1;
-            case INSTANT_DAMAGE: case INSTANT_HEAL: case JUMP: case POISON:
-                case REGEN: case SPEED: case STRENGTH:
+            case INSTANT_DAMAGE:
+            case INSTANT_HEAL:
+            case JUMP:
+            case POISON:
+            case REGEN:
+            case SPEED:
+            case STRENGTH:
                 return isUpgraded ? 2 : 1;
         }
         return 1;

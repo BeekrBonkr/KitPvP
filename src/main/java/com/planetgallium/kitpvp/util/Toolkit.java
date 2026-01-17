@@ -3,6 +3,7 @@ package com.planetgallium.kitpvp.util;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Locale;
 
 import com.cryptomorin.xseries.XMaterial;
 import com.cryptomorin.xseries.XPotion;
@@ -19,6 +20,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.GameMode;
 
 import com.planetgallium.kitpvp.Game;
 
@@ -48,6 +50,21 @@ public class Toolkit {
 		return inArena(entity.getWorld());
 	}
 	
+	public static GameMode getConfiguredGameMode(Resource config, String path, GameMode fallback) {
+		String raw = config.fetchString(path);
+		if (raw == null || raw.trim().isEmpty()) return fallback;
+
+		try {
+			return GameMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException ex) {
+			Toolkit.printToConsole(String.format(
+					"&7[&b&lKIT-PVP&7] &cInvalid GameMode '%s' at '%s'. Using '%s'.",
+					raw, path, fallback.name()
+			));
+			return fallback;
+		}
+	}
+
  	public static String[] getNearestPlayer(Player player, int maxY) {
 		String nearest = "player:100000.0";
 
