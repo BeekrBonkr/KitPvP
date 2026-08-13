@@ -46,12 +46,29 @@ public class MenuListener implements Listener {
 
             if (e.getClickedInventory().getHolder() instanceof KitHolder) {
 
+                e.setCancelled(true);
+
+                KitHolder holder = (KitHolder) e.getClickedInventory().getHolder();
                 Inventory openMenu = e.getClickedInventory();
-                String itemPath = "Menu.Items." + e.getSlot();
+                int clickedSlot = e.getSlot();
+
+                if (clickedSlot == holder.getPreviousPageSlot() || clickedSlot == holder.getNextPageSlot()) {
+                    int targetPage = holder.getPage() +
+                            (clickedSlot == holder.getNextPageSlot() ? 1 : -1);
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            arena.getMenus().getKitMenu().open(p, targetPage);
+                        }
+                    }.runTaskLater(plugin, 1L);
+                    return;
+                }
+
+                int menuSize = menuConfig.getInt("Menu.General.Size");
+                String itemPath = "Menu.Items." + (holder.getPage() * menuSize + clickedSlot);
 
                 if (menuConfig.contains(itemPath)) {
-                    if (openMenu.getItem(e.getSlot()) != null) {
-                        e.setCancelled(true);
+                    if (openMenu.getItem(clickedSlot) != null) {
                         p.closeInventory();
 
                         String clickType = e.getClick() == ClickType.LEFT ? "Left-Click" : "Right-Click";
