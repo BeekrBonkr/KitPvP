@@ -1,0 +1,17 @@
+Activator:
+  Name: '&aTidal Rush &7(Right Click)'
+  Material: NAUTILUS_SHELL
+Cooldown:
+  Cooldown: '30S'
+Message:
+  Message: '%prefix% &7The tide surges with you, dragging nearby enemies down.'
+Sound:
+  Sound: ITEM_TRIDENT_RETURN
+  Pitch: 1
+  Volume: 1
+Effects:
+  SPEED:
+    Amplifier: 2
+    Duration: 8
+Commands:
+- 'console: execute as %player% at @s as @a[distance=..6] unless entity @s[name=%player%] run effect give @s minecraft:slowness 5 1'

@@ -1,0 +1,82 @@
+Kit:
+  Permission: kp.kit.Windcaller
+  Cooldown: 0
+  Level: 0
+  Health: 20
+  MinimumVersion: '1.21'
+Inventory:
+  Armor:
+    Helmet:
+      Lore: []
+      Material: LEATHER_HELMET
+      Dye:
+        Red: 173
+        Green: 216
+        Blue: 230
+    Chestplate:
+      Lore: []
+      Material: CHAINMAIL_CHESTPLATE
+    Leggings:
+      Lore: []
+      Material: CHAINMAIL_LEGGINGS
+    Boots:
+      Lore:
+      - '&7Softens your landing after a dive.'
+      Material: LEATHER_BOOTS
+      Dye:
+        Red: 173
+        Green: 216
+        Blue: 230
+      Enchantments:
+        FEATHER_FALLING: 4
+  Items:
+    '0':
+      Name: '&aStorm Mace'
+      Lore:
+      - '&7Falls hit harder. Use &aUpdraft &7to'
+      - '&7launch skyward, then slam back down.'
+      Material: MACE
+      Enchantments:
+        DENSITY: 2
+    '1':
+      Name: '&aUpdraft &7(Right Click)'
+      Lore:
+      - '&7Ride the wind upward and glide down'
+      - '&7for a devastating mace slam.'
+      Material: BREEZE_ROD
+    '2':
+      Name: '&aWind Charge'
+      Lore:
+      - '&7Throw to knock enemies airborne'
+      - '&7or boost your own jumps.'
+      Material: WIND_CHARGE
+      Amount: 8
+    '8':
+      Name: '&aPlayer Tracker &7(Right Click)'
+      Material: COMPASS
+    Fill:
+      Name: '&aRegenerative Soups &7(Right Click)'
+      Lore:
+      - '&7Use this item to regain health.'
+      Material: MUSHROOM_STEW
+Effects:
+  SPEED:
+    Amplifier: 1
+    Duration: 999999
+  JUMP:
+    Amplifier: 2
+    Duration: 999999
+Menu:
+  Name: '&a&lWindcaller Kit'
+  Material: MACE
+  Lore:
+  - '&6Ability: Updraft'
+  - ' '
+  - '&7- Storm Mace (Density II)'
+  - '&7- Wind Charges'
+  - '&7- Chainmail Armor'
+  - '&7- Feather Falling IV Boots'
+  - '&7- Permanent Speed I & Jump Boost II'
+  - ' '
+  - '&eLeft-click to select.'
+  - '&eRight-click to preview.'

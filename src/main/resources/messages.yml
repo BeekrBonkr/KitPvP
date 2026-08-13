@@ -43,6 +43,8 @@ Messages:
     Location: '%prefix% &cYou are not in the arena to perform this action.'
     KitInvalid: '%prefix% &cYou cannot perform this action because you have a kit selected.'
     CooldownKit: '%prefix% &cYou cannot select this kit for another %cooldown%.'
+    KitVersion: '%prefix% &cThis kit requires server version %version% or newer.'
+    KitUnsupported: '%prefix% &cThis kit is disabled because it uses items this server version does not support.'
     CooldownAbility: '%prefix% &cYou cannot use this ability for another %cooldown%.'
     Offline: '%prefix% &cThe specified player could not be found.'
     Menu: '%prefix% &cFailed to automatically add to the menu, the menu may be full.'

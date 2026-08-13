@@ -1,0 +1,67 @@
+Kit:
+  Permission: kp.kit.Warsmith
+  Cooldown: 0
+  Level: 0
+  Health: 20
+  MinimumVersion: '1.16'
+Inventory:
+  Armor:
+    Helmet:
+      Lore: []
+      Material: GOLDEN_HELMET
+    Chestplate:
+      Lore:
+      - '&7Forged in the heart of the Nether.'
+      Material: DIAMOND_CHESTPLATE
+    Leggings:
+      Lore: []
+      Material: IRON_LEGGINGS
+    Boots:
+      Lore: []
+      Material: GOLDEN_BOOTS
+  Items:
+    '0':
+      Name: '&aWarsmith''s Cleaver'
+      Lore:
+      - '&7Heavy, slow, and utterly merciless.'
+      Material: NETHERITE_AXE
+    '1':
+      Name: '&aForge Fury &7(Right Click)'
+      Lore:
+      - '&7Channel the forge: your blows harden'
+      - '&7and nearby enemies falter.'
+      Material: NETHERITE_SCRAP
+    '2':
+      Name: '&aSmith''s Ration'
+      Lore:
+      - '&7A golden apple for dire moments.'
+      Material: GOLDEN_APPLE
+    '8':
+      Name: '&aPlayer Tracker &7(Right Click)'
+      Material: COMPASS
+    Fill:
+      Name: '&aRegenerative Soups &7(Right Click)'
+      Lore:
+      - '&7Use this item to regain health.'
+      Material: MUSHROOM_STEW
+Effects:
+  FIRE_RESISTANCE:
+    Amplifier: 1
+    Duration: 999999
+  SLOW:
+    Amplifier: 1
+    Duration: 999999
+Menu:
+  Name: '&a&lWarsmith Kit'
+  Material: NETHERITE_AXE
+  Lore:
+  - '&6Ability: Forge Fury'
+  - ' '
+  - '&7- Netherite Axe'
+  - '&7- Diamond Chestplate'
+  - '&7- Golden Apple'
+  - '&7- Permanent Fire Resistance'
+  - '&7- Permanent Slowness I'
+  - ' '
+  - '&eLeft-click to select.'
+  - '&eRight-click to preview.'

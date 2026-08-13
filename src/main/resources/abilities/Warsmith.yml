@@ -1,0 +1,17 @@
+Activator:
+  Name: '&aForge Fury &7(Right Click)'
+  Material: NETHERITE_SCRAP
+Cooldown:
+  Cooldown: '45S'
+Message:
+  Message: '%prefix% &7The forge burns within you. &bStrength &7rises!'
+Sound:
+  Sound: BLOCK_ANVIL_USE
+  Pitch: 1
+  Volume: 1
+Effects:
+  STRENGTH:
+    Amplifier: 1
+    Duration: 8
+Commands:
+- 'console: execute as %player% at @s as @a[distance=..5] unless entity @s[name=%player%] run effect give @s minecraft:weakness 5 0'

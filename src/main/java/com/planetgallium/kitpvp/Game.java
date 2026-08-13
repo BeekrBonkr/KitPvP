@@ -42,6 +42,7 @@ public class Game extends JavaPlugin implements Listener {
 		prefix = resources.getMessages().fetchString("Messages.General.Prefix");
 		database = new Infobase(this);
 		arena = new Arena(this, resources);
+		arena.getKits().validateLoadedKits();
 
 		PluginManager pm = Bukkit.getPluginManager();
 		pm.registerEvents(this, this);

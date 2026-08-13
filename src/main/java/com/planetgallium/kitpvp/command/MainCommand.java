@@ -210,6 +210,7 @@ public class MainCommand implements CommandExecutor {
         CacheManager.clearCaches();
 //        arena.getMenus().getKitMenu().rebuildCache();
         arena.getAbilities().rebuildCache();
+        arena.getKits().validateLoadedKits();
 
         sender.sendMessage(messages.fetchString("Messages.Commands.Reload"));
     }

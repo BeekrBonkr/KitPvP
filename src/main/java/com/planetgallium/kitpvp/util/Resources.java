@@ -45,6 +45,17 @@ public class Resources {
 			kitToResource.put("Rhino.yml", new Resource(plugin, "kits/Rhino.yml"));
 			kitToResource.put("Example.yml", new Resource(plugin, "kits/Example.yml"));
 			kitToResource.put("Trickster.yml", new Resource(plugin, "kits/Trickster.yml"));
+			kitToResource.put("Windcaller.yml", new Resource(plugin, "kits/Windcaller.yml"));
+			kitToResource.put("Poseidon.yml", new Resource(plugin, "kits/Poseidon.yml"));
+			kitToResource.put("Arbalist.yml", new Resource(plugin, "kits/Arbalist.yml"));
+			kitToResource.put("Warsmith.yml", new Resource(plugin, "kits/Warsmith.yml"));
+			kitToResource.put("Skybreaker.yml", new Resource(plugin, "kits/Skybreaker.yml"));
+
+			abilityToResource.put("Windcaller.yml", new Resource(plugin, "abilities/Windcaller.yml"));
+			abilityToResource.put("Poseidon.yml", new Resource(plugin, "abilities/Poseidon.yml"));
+			abilityToResource.put("Arbalist.yml", new Resource(plugin, "abilities/Arbalist.yml"));
+			abilityToResource.put("Warsmith.yml", new Resource(plugin, "abilities/Warsmith.yml"));
+			abilityToResource.put("Skybreaker.yml", new Resource(plugin, "abilities/Skybreaker.yml"));
 
 			abilityToResource.put("HealthPack.yml", new Resource(plugin, "abilities/HealthPack.yml"));
 			abilityToResource.put("ExampleAbility.yml", new Resource(plugin, "abilities/ExampleAbility.yml"));
@@ -164,5 +175,7 @@ public class Resources {
 	public Resource getSigns() { return signs; }
 
 	public Collection<Resource> getAbilityResources() { return abilityToResource.values(); }
+
+	public Collection<Resource> getKitResources() { return kitToResource.values(); }
 	
 }

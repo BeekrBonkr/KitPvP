@@ -24,6 +24,8 @@ public class Kit {
     private Cooldown cooldown;
     private int level;
     private int maxHealth;
+    private String minimumVersion;
+    private String unsupportedMaterial;
 
     private final Map<String, Object> options;
     private final Map<Integer, ItemStack> inventory;
@@ -57,6 +59,23 @@ public class Kit {
 
     public void setMaxHealth(int health) {
         this.maxHealth = health;
+    }
+
+    public void setMinimumVersion(String minimumVersion) {
+        this.minimumVersion = minimumVersion;
+    }
+
+    public void setUnsupportedMaterial(String unsupportedMaterial) {
+        this.unsupportedMaterial = unsupportedMaterial;
+    }
+
+    /**
+     * Returns true if the running server version meets this kit's
+     * Kit.MinimumVersion requirement (always true when none is set).
+     */
+    public boolean meetsVersionRequirement() {
+        return minimumVersion == null ||
+                Toolkit.versionToNumber() >= Toolkit.versionStringToNumber(minimumVersion);
     }
 
     public void setOption(String key, Object value) {
@@ -254,6 +273,9 @@ public class Kit {
         resource.set("Kit.Cooldown", cooldown != null ? cooldown.formatted(true) : 0);
         resource.set("Kit.Level", level);
         resource.set("Kit.Health", maxHealth);
+        if (minimumVersion != null) {
+            resource.set("Kit.MinimumVersion", minimumVersion);
+        }
         resource.save();
 
         AttributeWriter.itemStackToResource(resource, "Inventory.Armor.Helmet", kitHelmet);
@@ -276,6 +298,10 @@ public class Kit {
     }
 
     public String getName() { return name; }
+
+    public String getMinimumVersion() { return minimumVersion; }
+
+    public String getUnsupportedMaterial() { return unsupportedMaterial; }
 
     public String getPermission() { return permission; }
 

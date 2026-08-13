@@ -1,0 +1,71 @@
+Kit:
+  Permission: kp.kit.Poseidon
+  Cooldown: 0
+  Level: 0
+  Health: 20
+  MinimumVersion: '1.13'
+Inventory:
+  Armor:
+    Helmet:
+      Lore:
+      - '&7A gift from the deep.'
+      Material: TURTLE_HELMET
+    Chestplate:
+      Lore: []
+      Material: LEATHER_CHESTPLATE
+      Dye:
+        Red: 0
+        Green: 105
+        Blue: 148
+    Leggings:
+      Lore: []
+      Material: IRON_LEGGINGS
+    Boots:
+      Lore: []
+      Material: LEATHER_BOOTS
+      Dye:
+        Red: 0
+        Green: 105
+        Blue: 148
+      Enchantments:
+        DEPTH_STRIDER: 2
+  Items:
+    '0':
+      Name: '&aTrident of the Tides'
+      Lore:
+      - '&7Throw it and it always returns.'
+      Material: TRIDENT
+      Enchantments:
+        IMPALING: 3
+        LOYALTY: 2
+    '1':
+      Name: '&aTidal Rush &7(Right Click)'
+      Lore:
+      - '&7Surge forward with the strength of'
+      - '&7the ocean, dragging enemies down.'
+      Material: NAUTILUS_SHELL
+    '8':
+      Name: '&aPlayer Tracker &7(Right Click)'
+      Material: COMPASS
+    Fill:
+      Name: '&aRegenerative Soups &7(Right Click)'
+      Lore:
+      - '&7Use this item to regain health.'
+      Material: MUSHROOM_STEW
+Effects:
+  WATER_BREATHING:
+    Amplifier: 1
+    Duration: 999999
+Menu:
+  Name: '&a&lPoseidon Kit'
+  Material: TRIDENT
+  Lore:
+  - '&6Ability: Tidal Rush'
+  - ' '
+  - '&7- Trident (Impaling III, Loyalty II)'
+  - '&7- Turtle Helmet'
+  - '&7- Depth Strider II Boots'
+  - '&7- Permanent Water Breathing'
+  - ' '
+  - '&eLeft-click to select.'
+  - '&eRight-click to preview.'

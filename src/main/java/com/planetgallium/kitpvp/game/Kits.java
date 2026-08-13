@@ -54,36 +54,79 @@ public class Kits {
 
     private void automaticallyAddKitToMenu(Player fromPlayer, Kit kitToCreate) {
         if (plugin.getConfig().getBoolean("Other.AutomaticallyAddKitToMenu")) {
-
-            int nextAvailableMenuSlot = Toolkit.getNextAvailable(resources.getMenu(), "Menu.Items",
-                    resources.getMenu().getInt("Menu.General.Size") - 1, true, -1);
-
-            if (nextAvailableMenuSlot != -1) {
-                Resource menuConfig = resources.getMenu();
-                String pathPrefix = "Menu.Items." + nextAvailableMenuSlot;
-
-                menuConfig.set(pathPrefix + ".Name", "&a&l" + kitToCreate.getName() + " Kit");
-                menuConfig.set(pathPrefix + ".Material", "BEDROCK");
-                menuConfig.set(pathPrefix + ".Lore", new String[]{
-                        "&7This information can be modified in the",
-                        "&7menu.yml file. To disable automatic adding to the",
-                        "&7menu, disable AutomaticallyAddKitToMenu in the",
-                        "&7config.yml.",
-                        " ",
-                        "&e&eLeft-click to select.",
-                        "&eRight-click to preview."});
-                menuConfig.set(pathPrefix + ".Commands.Left-Click",new String[]{
-                        "player: kp kit " + kitToCreate.getName()});
-                menuConfig.set(pathPrefix + ".Commands.Right-Click", new String[]{
-                        "player: kp preview " + kitToCreate.getName()});
-
-                menuConfig.save();
-                menuConfig.load();
-//                arena.getMenus().getKitMenu().rebuildCache();
-            } else {
+            if (!addKitToMenu(kitToCreate.getName())) {
                 fromPlayer.sendMessage(messages.fetchString("Messages.Error.Menu"));
             }
         }
+    }
+
+    /**
+     * Writes a menu entry for the kit at the next free slot. The entry's
+     * appearance comes from the optional Menu section of the kit file
+     * (Menu.Name, Menu.Material, Menu.Lore); otherwise the kit's first
+     * hotbar item is used as the icon. Returns false if the menu is full.
+     */
+    private boolean addKitToMenu(String kitName) {
+        Resource menuConfig = resources.getMenu();
+        int menuSize = menuConfig.getInt("Menu.General.Size");
+
+        int slot = findNextFreeMenuSlot(menuConfig, menuSize);
+        if (slot == -1) {
+            return false;
+        }
+
+        Resource kitResource = resources.getKit(kitName);
+
+        String name = "&a&l" + kitName + " Kit";
+        String material = "BEDROCK";
+        List<String> lore = new ArrayList<>(Arrays.asList(
+                "&eLeft-click to select.",
+                "&eRight-click to preview."));
+
+        if (kitResource != null) {
+            if (kitResource.contains("Menu.Name")) {
+                name = kitResource.getString("Menu.Name");
+            }
+            if (kitResource.contains("Menu.Material")) {
+                material = kitResource.getString("Menu.Material");
+            } else if (kitResource.contains("Inventory.Items.0.Material")) {
+                material = kitResource.getString("Inventory.Items.0.Material");
+            }
+            if (kitResource.contains("Menu.Lore")) {
+                lore = kitResource.getStringList("Menu.Lore");
+            }
+        }
+
+        String pathPrefix = "Menu.Items." + slot;
+        menuConfig.set(pathPrefix + ".Name", name);
+        menuConfig.set(pathPrefix + ".Material", material);
+        menuConfig.set(pathPrefix + ".Lore", lore);
+        menuConfig.set(pathPrefix + ".Commands.Left-Click",
+                new String[]{"player: kp kit " + kitName});
+        menuConfig.set(pathPrefix + ".Commands.Right-Click",
+                new String[]{"player: kp preview " + kitName});
+
+        menuConfig.save();
+        menuConfig.load();
+        return true;
+    }
+
+    /**
+     * Next unconfigured virtual slot, skipping the last two positions of
+     * each page which are where the pagination arrows go (capped at 10
+     * pages, see KitMenu).
+     */
+    private int findNextFreeMenuSlot(Resource menuConfig, int menuSize) {
+        for (int slot = 0; slot < menuSize * 10; slot++) {
+            int positionInPage = slot % menuSize;
+            if (positionInPage == menuSize - 1 || positionInPage == menuSize - 2) {
+                continue;
+            }
+            if (!menuConfig.contains("Menu.Items." + slot)) {
+                return slot;
+            }
+        }
+        return -1;
     }
 
     public Kit createKitFromPlayer(Player player, String name) {
@@ -166,6 +209,11 @@ public class Kits {
 
         kit.setMaxHealth(resource.contains("Kit.Health") ? resource.getInt("Kit.Health") : 20);
 
+        if (resource.contains("Kit.MinimumVersion")) {
+            kit.setMinimumVersion(String.valueOf(resource.get("Kit.MinimumVersion")));
+        }
+        kit.setUnsupportedMaterial(findUnsupportedMaterial(resource));
+
         kit.setHelmet(AttributeParser.getItemStackFromPath(resource, "Inventory.Armor.Helmet"));
         kit.setChestplate(AttributeParser.getItemStackFromPath(resource, "Inventory.Armor.Chestplate"));
         kit.setLeggings(AttributeParser.getItemStackFromPath(resource, "Inventory.Armor.Leggings"));
@@ -201,6 +249,19 @@ public class Kits {
 
         if (kit == null) {
             p.sendMessage(messages.fetchString("Messages.Error.Lost"));
+            return;
+        }
+
+        if (!kit.meetsVersionRequirement()) {
+            p.sendMessage(messages.fetchString("Messages.Error.KitVersion")
+                    .replace("%version%", kit.getMinimumVersion()));
+            return;
+        }
+
+        if (kit.getUnsupportedMaterial() != null) {
+            p.sendMessage(messages.fetchString("Messages.Error.KitUnsupported"));
+            Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cKit " + kit.getName() + " is disabled: material " +
+                    kit.getUnsupportedMaterial() + " does not exist on this server version.");
             return;
         }
 
@@ -251,6 +312,51 @@ public class Kits {
         if (kitResource != null && kitResource.contains("Commands")) {
             Toolkit.runCommands(p, kitResource.getStringList("Commands"),
                     "none", "none");
+        }
+    }
+
+    /**
+     * Scans every Material key in a kit file and returns the first material
+     * name that does not exist on the running server version, or null if
+     * all materials are supported.
+     */
+    private String findUnsupportedMaterial(Resource resource) {
+        for (String key : resource.getKeys(true)) {
+            if (key.endsWith("Material")) {
+                String materialName = resource.fetchString(key);
+                if (!Toolkit.isMaterialSupported(materialName)) {
+                    return materialName;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Called on startup to warn the console about kits that will be
+     * disabled on this server version, instead of failing when a player
+     * first tries to use one.
+     */
+    public void validateLoadedKits() {
+        int serverVersion = Toolkit.versionToNumber();
+
+        for (Resource kitResource : resources.getKitResources()) {
+            String kitName = trimName(kitResource.getName());
+
+            if (kitResource.contains("Kit.MinimumVersion")) {
+                String minimumVersion = String.valueOf(kitResource.get("Kit.MinimumVersion"));
+                if (serverVersion < Toolkit.versionStringToNumber(minimumVersion)) {
+                    Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &eKit " + kitName + " is disabled: it requires " +
+                            "server version " + minimumVersion + " or newer.");
+                    continue;
+                }
+            }
+
+            String unsupportedMaterial = findUnsupportedMaterial(kitResource);
+            if (unsupportedMaterial != null) {
+                Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &eKit " + kitName + " is disabled: material " +
+                        unsupportedMaterial + " does not exist on this server version.");
+            }
         }
     }
 

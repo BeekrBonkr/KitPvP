@@ -1,0 +1,71 @@
+Kit:
+  Permission: kp.kit.Arbalist
+  Cooldown: 0
+  Level: 0
+  Health: 20
+  MinimumVersion: '1.14'
+Inventory:
+  Armor:
+    Helmet:
+      Lore: []
+      Material: IRON_HELMET
+    Chestplate:
+      Lore: []
+      Material: CHAINMAIL_CHESTPLATE
+    Leggings:
+      Lore: []
+      Material: CHAINMAIL_LEGGINGS
+    Boots:
+      Lore: []
+      Material: IRON_BOOTS
+  Items:
+    '0':
+      Name: '&aArbalest'
+      Lore:
+      - '&7Fast to load, and bolts punch clean'
+      - '&7through shields and bodies alike.'
+      Material: CROSSBOW
+      Enchantments:
+        QUICK_CHARGE: 2
+        PIERCING: 2
+    '1':
+      Name: '&aResupply &7(Right Click)'
+      Lore:
+      - '&7Restock your quiver and rockets.'
+      Material: FLETCHING_TABLE
+    '2':
+      Lore: []
+      Material: ARROW
+      Amount: 16
+    '3':
+      Name: '&aStone Dagger'
+      Lore:
+      - '&7A last resort for close quarters.'
+      Material: STONE_SWORD
+    '8':
+      Name: '&aPlayer Tracker &7(Right Click)'
+      Material: COMPASS
+    Offhand:
+      Name: '&aRocket Volley'
+      Lore:
+      - '&7Load these into your crossbow'
+      - '&7for explosive shots.'
+      Material: FIREWORK_ROCKET
+      Amount: 3
+    Fill:
+      Name: '&aRegenerative Soups &7(Right Click)'
+      Lore:
+      - '&7Use this item to regain health.'
+      Material: MUSHROOM_STEW
+Menu:
+  Name: '&a&lArbalist Kit'
+  Material: CROSSBOW
+  Lore:
+  - '&6Ability: Resupply'
+  - ' '
+  - '&7- Crossbow (Quick Charge II, Piercing II)'
+  - '&7- Firework Rockets (offhand)'
+  - '&7- Iron & Chainmail Armor'
+  - ' '
+  - '&eLeft-click to select.'
+  - '&eRight-click to preview.'

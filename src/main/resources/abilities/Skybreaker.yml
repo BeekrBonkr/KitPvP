@@ -1,0 +1,18 @@
+Activator:
+  Name: '&aGround Slam &7(Right Click)'
+  Material: HEAVY_CORE
+Cooldown:
+  Cooldown: '30S'
+Message:
+  Message: '%prefix% &7The ground ruptures! Nearby enemies are &bthrown skyward&7.'
+Sound:
+  Sound: ENTITY_GENERIC_EXPLODE
+  Pitch: 1
+  Volume: 1
+Effects:
+  RESISTANCE:
+    Amplifier: 2
+    Duration: 5
+Commands:
+- 'console: execute as %player% at @s as @a[distance=..5] unless entity @s[name=%player%] run effect give @s minecraft:levitation 1 5'
+- 'console: execute as %player% at @s as @a[distance=..5] unless entity @s[name=%player%] run effect give @s minecraft:slowness 4 1'

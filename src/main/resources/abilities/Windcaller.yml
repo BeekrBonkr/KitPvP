@@ -1,0 +1,20 @@
+Activator:
+  Name: '&aUpdraft &7(Right Click)'
+  Material: BREEZE_ROD
+Cooldown:
+  Cooldown: '20S'
+Message:
+  Message: '%prefix% &7The wind carries you skyward. Time your &bmace slam&7!'
+Sound:
+  Sound: ENTITY_BREEZE_SHOOT
+  Pitch: 1
+  Volume: 1
+Effects:
+  LEVITATION:
+    Amplifier: 8
+    Duration: 1
+  SLOW_FALLING:
+    Amplifier: 1
+    Duration: 8
+Commands:
+- 'console: give %player% wind_charge 2'

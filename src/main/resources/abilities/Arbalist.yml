@@ -1,0 +1,18 @@
+Activator:
+  Name: '&aResupply &7(Right Click)'
+  Material: FLETCHING_TABLE
+Cooldown:
+  Cooldown: '25S'
+Message:
+  Message: '%prefix% &7You restocked your &bquiver &7and &brockets&7.'
+Sound:
+  Sound: ITEM_CROSSBOW_LOADING_END
+  Pitch: 1
+  Volume: 1
+Effects:
+  SPEED:
+    Amplifier: 2
+    Duration: 5
+Commands:
+- 'console: give %player% arrow 6'
+- 'console: give %player% firework_rocket 2'

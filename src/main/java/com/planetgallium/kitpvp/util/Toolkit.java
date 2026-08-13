@@ -340,6 +340,38 @@ public class Toolkit {
 		return (int) p.getMaxHealth();
 	}
 
+	/**
+	 * Converts a version string like "1.9" or "1.21" to the same number
+	 * scheme used by versionToNumber() (18, 19, 110, ... 121).
+	 * Returns -1 if the string cannot be parsed, which callers should
+	 * treat as "no requirement".
+	 */
+	public static int versionStringToNumber(String version) {
+		try {
+			String[] parts = version.trim().split("\\.");
+			int minor = Integer.parseInt(parts[1]);
+			return minor < 10 ? 10 + minor : 100 + minor;
+		} catch (Exception e) {
+			printToConsole("&7[&b&lKIT-PVP&7] &cCould not parse version string: " + version);
+			return -1;
+		}
+	}
+
+	/**
+	 * Returns true if the material name resolves to a real material on the
+	 * running server version. Unlike safeMaterial, does not fall back.
+	 */
+	public static boolean isMaterialSupported(String materialName) {
+		if (materialName == null) return true;
+		try {
+			Optional<XMaterial> materialOptional = XMaterial.matchXMaterial(materialName);
+			if (materialOptional.isPresent() && materialOptional.get().parseMaterial() != null) {
+				return true;
+			}
+		} catch (IllegalArgumentException ignored) {}
+		return Material.getMaterial(materialName) != null;
+	}
+
 	public static Material safeMaterial(String materialName) {
 		// 1. Use XMaterial first
 		Optional<XMaterial> materialOptional = XMaterial.matchXMaterial(materialName);

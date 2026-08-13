@@ -1,0 +1,73 @@
+Kit:
+  Permission: kp.kit.Skybreaker
+  Cooldown: 0
+  Level: 0
+  Health: 20
+  MinimumVersion: '1.21'
+Inventory:
+  Armor:
+    Helmet:
+      Lore: []
+      Material: IRON_HELMET
+    Chestplate:
+      Lore: []
+      Material: IRON_CHESTPLATE
+    Leggings:
+      Lore: []
+      Material: CHAINMAIL_LEGGINGS
+    Boots:
+      Lore:
+      - '&7Softens your landing after a slam.'
+      Material: IRON_BOOTS
+      Enchantments:
+        FEATHER_FALLING: 4
+  Items:
+    '0':
+      Name: '&aSkybreaker'
+      Lore:
+      - '&7Smash hits burst with wind and'
+      - '&7punch straight through armor.'
+      Material: MACE
+      Enchantments:
+        WIND_BURST: 2
+        BREACH: 2
+    '1':
+      Name: '&aGround Slam &7(Right Click)'
+      Lore:
+      - '&7Pop nearby enemies into the air,'
+      - '&7then meet them mid-flight with'
+      - '&7your mace.'
+      Material: HEAVY_CORE
+    '2':
+      Name: '&aWind Charge'
+      Lore:
+      - '&7Throw at your feet to launch upward'
+      - '&7and line up a smash attack.'
+      Material: WIND_CHARGE
+      Amount: 12
+    '8':
+      Name: '&aPlayer Tracker &7(Right Click)'
+      Material: COMPASS
+    Fill:
+      Name: '&aRegenerative Soups &7(Right Click)'
+      Lore:
+      - '&7Use this item to regain health.'
+      Material: MUSHROOM_STEW
+Effects:
+  JUMP:
+    Amplifier: 2
+    Duration: 999999
+Menu:
+  Name: '&a&lSkybreaker Kit'
+  Material: HEAVY_CORE
+  Lore:
+  - '&6Ability: Ground Slam'
+  - ' '
+  - '&7- Mace (Wind Burst II, Breach II)'
+  - '&7- Wind Charges'
+  - '&7- Iron Armor'
+  - '&7- Feather Falling IV Boots'
+  - '&7- Permanent Jump Boost II'
+  - ' '
+  - '&eLeft-click to select.'
+  - '&eRight-click to preview.'
