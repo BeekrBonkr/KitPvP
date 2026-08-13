@@ -80,7 +80,12 @@ public class ArenaListener implements Listener {
     @EventHandler
     public void onExplode(EntityExplodeEvent e) {
     	if (Toolkit.inArena(e.getEntity()) && config.getBoolean("Arena.PreventBlockBreaking")) {
-    		if (e.getEntityType() == EntityType.PRIMED_TNT) { // enable TNT explosion animation
+			// TNT: enable explosion animation; wind charges (1.21+, compared by
+			// name so this compiles against older APIs): keep their knockback
+			// burst working. Neither is allowed to break blocks.
+			String entityTypeName = e.getEntityType().name();
+    		if (e.getEntityType() == EntityType.PRIMED_TNT ||
+					entityTypeName.equals("WIND_CHARGE") || entityTypeName.equals("BREEZE_WIND_CHARGE")) {
     			e.blockList().clear();
     			e.setCancelled(false);
     			return;
