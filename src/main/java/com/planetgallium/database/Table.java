@@ -92,6 +92,7 @@ public class Table {
      * It will NOT change the primary key column for all database entries in any way
      */
     public void updateRecord(Field keyOfRecordToUpdate, Field ... fields) {
+        if (!verifyPrimaryKey(this, keyOfRecordToUpdate)) return;
         if (!containsPrimaryKey(fields)) {
             String updateQuery = Table.UPDATE_RECORD_QUERY.replace("{table_name}", this.getName())
                     .replace("{columns_with_values}", formatFieldNamesWithValues(fields))
@@ -304,6 +305,11 @@ public class Table {
     }
 
     private boolean verifyPrimaryKey(Table table, Field keyToValidate) {
+        if (keyToValidate == null || keyToValidate.getValue() == null) {
+            System.out.printf("[Database] Failed to perform action on table %s; primary key value was null\n",
+                    table.getName());
+            return false;
+        }
         if (!keyToValidate.getName().equals(table.getPrimaryKey().getName())) {
             System.out.printf("[Database] Failed to perform action with key %s; did not match table primary key\n",
                     keyToValidate.getName());

@@ -4,6 +4,7 @@ import com.planetgallium.database.*;
 import com.planetgallium.database.Record;
 import com.planetgallium.kitpvp.Game;
 import com.planetgallium.kitpvp.util.*;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 
@@ -137,6 +138,14 @@ public class Infobase {
             return CacheManager.getUUIDCache().get(username);
         }
 
+        // an online player's UUID is authoritative; also repairs a cache entry missed on join
+        Player onlinePlayer = Bukkit.getPlayerExact(username);
+        if (onlinePlayer != null) {
+            String uuid = onlinePlayer.getUniqueId().toString();
+            CacheManager.getUUIDCache().put(username, uuid);
+            return uuid;
+        }
+
         if (verifyTableExists("stats")) {
             Table stats = database.getTable("stats");
 
@@ -147,6 +156,10 @@ public class Infobase {
                 String uuid = (String) matchingRecord.getFieldValue("uuid");
                 CacheManager.getUUIDCache().put(username, uuid);
                 return uuid;
+            } else if (matchingRecords.size() > 1) {
+                Toolkit.printToConsole(String.format("&7[&b&lKIT-PVP&7] &cFound %d stats rows for username %s; " +
+                        "cannot resolve a UUID. Remove the duplicate rows from the stats table.",
+                        matchingRecords.size(), username));
             }
         }
         return null;
@@ -273,7 +286,9 @@ public class Infobase {
             Table statsTable = database.getTable("stats");
 
             Record playerRecord = statsTable.getRecord(uuidField("username", username));
-            return recordToPlayerData(playerRecord);
+            if (playerRecord != null) {
+                return recordToPlayerData(playerRecord);
+            }
         }
         return playerData;
     }
