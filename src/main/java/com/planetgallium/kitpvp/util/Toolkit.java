@@ -21,6 +21,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 import com.planetgallium.kitpvp.Game;
+import com.planetgallium.kitpvp.api.Kit;
 
 import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -31,6 +32,56 @@ public class Toolkit {
 
 	public static boolean isEmpty(ItemStack stack) {
 		return stack == null || stack.getType().isAir();
+	}
+
+	public static int countEmptyMainSlots(Player p) {
+		int emptySlots = 0;
+		for (int i = 0; i < 36; i++) {
+			if (isEmpty(p.getInventory().getItem(i))) {
+				emptySlots++;
+			}
+		}
+		return emptySlots;
+	}
+
+	/**
+	 * Number of tridents granted by the player's kit that are currently outside
+	 * their inventory — mid-flight after a throw, stuck in a block, or lying on
+	 * the ground. Each one needs an empty slot to return into (Loyalty) or be
+	 * picked back up, so item inserts must leave this many slots empty. Which
+	 * slot stays empty does not matter: a Loyalty trident returns to the slot
+	 * it was thrown from, falling back to any free slot.
+	 */
+	public static int countMissingKitTridents(Kit kit, Player p) {
+		if (kit == null) {
+			return 0;
+		}
+
+		int kitTridents = 0;
+		for (ItemStack kitItem : kit.getInventory().values()) {
+			if (!isEmpty(kitItem) && kitItem.getType().name().equals("TRIDENT")) {
+				kitTridents++;
+			}
+		}
+		if (kitTridents == 0) {
+			return 0;
+		}
+
+		int heldTridents = 0;
+		for (int i = 0; i < 36; i++) {
+			ItemStack item = p.getInventory().getItem(i);
+			if (!isEmpty(item) && item.getType().name().equals("TRIDENT")) {
+				heldTridents++;
+			}
+		}
+		if (versionToNumber() >= 19) {
+			ItemStack offhand = p.getInventory().getItemInOffHand();
+			if (!isEmpty(offhand) && offhand.getType().name().equals("TRIDENT")) {
+				heldTridents++;
+			}
+		}
+
+		return Math.max(0, kitTridents - heldTridents);
 	}
 
 	private static final Material FALLBACK_MATERIAL = Material.BEDROCK;

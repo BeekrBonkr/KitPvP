@@ -12,10 +12,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
 import com.planetgallium.kitpvp.Game;
 
 public class SoupListener implements Listener {
@@ -55,10 +51,11 @@ public class SoupListener implements Listener {
 	}
 
 	private void insertSoupRewardToInventory(Player killer) {
-		Set<Integer> reservedSlots = getAirborneKitItemSlots(killer);
+		Kit kit = plugin.getArena().getKits().getKitOfPlayer(killer.getName());
+		int reservedSlotCount = Toolkit.countMissingKitTridents(kit, killer);
 
 		for (int i = config.getInt("Kill.SoupReward.Amount"); i > 0; i--) {
-			int slot = findEmptyUnreservedSlot(killer, reservedSlots);
+			int slot = findEmptySlotKeepingReserve(killer, reservedSlotCount);
 			if (slot == -1) {
 				killer.sendMessage(config.fetchString("Kill.SoupReward.NoSpace")
 						.replace("%amount%", String.valueOf(i)));
@@ -70,42 +67,17 @@ public class SoupListener implements Listener {
 	}
 
 	/**
-	 * Slots belonging to kit items that are currently "in flight" and will
-	 * re-insert themselves later, like a thrown Loyalty trident. Soups must
-	 * not fill these slots or the returning item finds a full inventory and
-	 * drops on the ground instead.
+	 * First empty main-inventory slot, or -1 if filling one would leave fewer
+	 * than reservedSlotCount slots empty. A kit trident that is out of the
+	 * inventory returns to the slot it was thrown from — not necessarily the
+	 * kit's configured slot — so the reserve is a count, not specific slots.
 	 */
-	private Set<Integer> getAirborneKitItemSlots(Player p) {
-		Set<Integer> reservedSlots = new HashSet<>();
-
-		Kit kit = plugin.getArena().getKits().getKitOfPlayer(p.getName());
-		if (kit == null) {
-			return reservedSlots;
+	private int findEmptySlotKeepingReserve(Player p, int reservedSlotCount) {
+		if (Toolkit.countEmptyMainSlots(p) <= reservedSlotCount) {
+			return -1;
 		}
-
-		for (Map.Entry<Integer, ItemStack> entry : kit.getInventory().entrySet()) {
-			ItemStack kitItem = entry.getValue();
-			if (kitItem != null && kitItem.getType().name().equals("TRIDENT") &&
-					!inventoryContainsMaterial(p, "TRIDENT")) {
-				reservedSlots.add(entry.getKey());
-			}
-		}
-		return reservedSlots;
-	}
-
-	private boolean inventoryContainsMaterial(Player p, String materialName) {
 		for (int i = 0; i < 36; i++) {
-			ItemStack item = p.getInventory().getItem(i);
-			if (!Toolkit.isEmpty(item) && item.getType().name().equals(materialName)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private int findEmptyUnreservedSlot(Player p, Set<Integer> reservedSlots) {
-		for (int i = 0; i < 36; i++) {
-			if (Toolkit.isEmpty(p.getInventory().getItem(i)) && !reservedSlots.contains(i)) {
+			if (Toolkit.isEmpty(p.getInventory().getItem(i))) {
 				return i;
 			}
 		}

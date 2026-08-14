@@ -82,7 +82,11 @@ public class ArrowListener implements Listener {
 				}
 			}
 
-			if (shooter.getInventory().firstEmpty() == -1) {
+			// keep a slot empty for each kit trident currently out of the inventory
+			int reservedSlotCount = Toolkit.countMissingKitTridents(
+					plugin.getArena().getKits().getKitOfPlayer(shooter.getName()), shooter);
+
+			if (Toolkit.countEmptyMainSlots(shooter) <= reservedSlotCount) {
 				shooter.sendMessage(config.fetchString("Combat.ArrowReturn.NoSpace"));
 			} else {
 				shooter.getInventory().addItem(arrowToAdd);
