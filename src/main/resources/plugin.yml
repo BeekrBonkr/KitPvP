@@ -10,12 +10,91 @@ api-version: 1.13
 commands:
    kitpvp:
      description: Main command.
+     usage: /kp help
      aliases: [kp, kit-pvp]
-   ckit:
-     description: Select a kit.
-   cspawn:
-     description: Teleports you to the spawn.
-   ckits:
-     description: View all available kits.
-   cstats:
-     description: View your stats.
+
+permissions:
+   kp.command.reload:
+     description: Reload the configuration files.
+     default: op
+   kp.command.debug:
+     description: Print debug information.
+     default: op
+   kp.command.kits:
+     description: List the available kits.
+     default: op
+   kp.command.top:
+     description: View the leaderboards.
+     default: op
+   kp.command.menu:
+     description: Open the kit menu.
+     default: op
+   kp.command.preview:
+     description: Preview the contents of a kit.
+     default: op
+   kp.command.stats:
+     description: View your own stats.
+     default: op
+   kp.command.stats.other:
+     description: View another player's stats.
+     default: op
+   kp.command.clear:
+     description: Clear your own kit.
+     default: op
+   kp.command.clear.other:
+     description: Clear another player's kit.
+     default: op
+   kp.command.kit.other:
+     description: Give another player a kit.
+     default: op
+   kp.command.spawn:
+     description: Teleport to the arena spawn.
+     default: op
+   kp.command.arena:
+     description: Teleport to another arena.
+     default: op
+   kp.command.create:
+     description: Create a kit from your inventory.
+     default: op
+   kp.command.delete:
+     description: Delete an existing kit.
+     default: op
+   kp.command.addspawn:
+     description: Add a spawn point to this world's arena.
+     default: op
+   kp.command.delarena:
+     description: Remove this world's arena.
+     default: op
+   kp.command.setstats:
+     description: Change a player's stats.
+     default: op
+   kp.sign.create:
+     description: Create and break KitPvP signs.
+     default: op
+   kp.combattag.bypass:
+     description: Ignore combat tagging restrictions.
+     default: op
+   kp.cooldownbypass:
+     description: Ignore kit cooldowns.
+     default: op
+   kp.updatenotify:
+     description: Be told on join when an update is available.
+     default: op
+   kp.arena.blockbreaking:
+     description: Break blocks inside the arena.
+     default: op
+   kp.arena.blockplacing:
+     description: Place blocks inside the arena.
+     default: op
+   kp.arena.itemdropping:
+     description: Drop items inside the arena.
+     default: op
+   kp.arrowreturn:
+     description: Receive arrows back for hitting a player.
+     default: true
+   kp.arrowmessage:
+     description: Be told the health of a player you hit with an arrow.
+     default: op
+   kp.soupreturn:
+     description: Receive soup as a kill reward.
+     default: op

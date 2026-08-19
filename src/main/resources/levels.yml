@@ -9,6 +9,8 @@ Levels:
     Experience-Taken-On-Death: 5
     Minimum-Level: 0
     Maximum-Level: 100
+    # Used for any level that has no Prefix of its own below.
+    Default-Prefix: '&7Level %level%'
   Commands-On-Level-Up: []
   Levels:
     0:

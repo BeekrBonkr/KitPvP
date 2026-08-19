@@ -6,6 +6,9 @@ Scoreboard:
   General:
     Title: '&0     &r&b&lKIT-PVP     &0'
     Enabled: true
+    # How often the sidebar is redrawn, in seconds. 0 turns the timer off and
+    # leaves it updating only on join, kill and respawn.
+    RefreshSeconds: 5
   Lines:
   - ' '
   - '&e&lStats'

@@ -31,10 +31,24 @@ Combat:
     Message: '%prefix% &b%player% &7is on &c%health%&7.'
     Enabled: true
   ArrowReturn:
-    ItemName: '&eReturnable Arrow'
     NoSpace: '%prefix% &cYou must have at least one slot open in your inventory for you to receive your arrow for your successful shot.'
     Enabled: true
     Count: 2
+  # Players are held in combat for a few seconds after taking or dealing damage.
+  # While tagged they cannot clear their kit, switch kits, teleport, or use the
+  # hub item, and quitting counts as a death. kp.combattag.bypass skips all of it.
+  Tag:
+    Enabled: true
+    Duration: 15
+    PunishOnQuit: true
+    # Commands from other plugins that should also be blocked while in combat.
+    BlockedCommands:
+    - hub
+    - lobby
+    - warp
+    - tpa
+    - tpaccept
+    - home
 Kill:
   SoupReward:
     NoSpace: '%prefix% &c%amount% soups could not be added to your full inventory.'
@@ -66,13 +80,13 @@ Death:
 Respawn:
   Commands: []
 PlayerTracker:
-  Name: '&aPlayer Tracker'
   Message: '&b&lTarget: &3%nearestplayer% &b&lDistance: &3%distance%'
   NoneOnline: '&cNo Players Online'
   TrackBelowY: 128
   RefreshOnlyWhenHeld: true
 Soups:
   Name: '&aRegenerative Soups &7(Right Click)'
+  RefillMenuTitle: 'Refill'
   RegenAmount: 6
   RemoveAfterUse: true
   Lore:
@@ -119,7 +133,6 @@ Arena:
   GiveItemsOnClear: true
   GiveItemsOnRespawn: true
   GiveItemsOnJoin: true
-  NoKitProtection: true
   FancyDeath: true
   ResetKillStreakOnLeave: true
   ToSpawnOnJoin: true

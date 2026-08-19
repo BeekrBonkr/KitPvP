@@ -6,6 +6,14 @@ Menu:
   General:
     Title: 'Kits'
     Size: 54
+    # Shown by the %kit_status% and %kit_cooldown% placeholders, which can be
+    # used in the Name and Lore of any menu item that selects a kit.
+    Status:
+      Available: '&aAvailable'
+      Locked: '&cRequires level %level%'
+      Cooldown: '&cAvailable in %cooldown%'
+      NoPermission: '&cLocked'
+      Ready: '&aReady'
   Items:
     10:
       Name: '&a&lFighter Kit'
@@ -19,6 +27,7 @@ Menu:
       - '&7- Iron Leggings'
       - '&7- Iron Boots'
       - ' '
+      - '&7Status: %kit_status%'
       - '&eLeft-click to select.'
       - '&eRight-click to preview.'
       Commands:
