@@ -37,9 +37,6 @@ public class Kits {
         this.playerKits = new HashMap<>();
     }
 
-    // Could also load and cache kits onEnable like Abilities.yml so no lag spike for hefty kit when first used by
-    // player
-
     public void createKit(Player fromPlayer, String kitName) {
         Kit kitToCreate = createKitFromPlayer(fromPlayer, kitName);
 
@@ -53,7 +50,7 @@ public class Kits {
     }
 
     private void automaticallyAddKitToMenu(Player fromPlayer, Kit kitToCreate) {
-        if (plugin.getConfig().getBoolean("Other.AutomaticallyAddKitToMenu")) {
+        if (resources.getConfig().getBoolean("Other.AutomaticallyAddKitToMenu")) {
             if (!addKitToMenu(kitToCreate.getName())) {
                 fromPlayer.sendMessage(messages.fetchString("Messages.Error.Menu"));
             }
@@ -84,16 +81,17 @@ public class Kits {
                 "&eRight-click to preview."));
 
         if (kitResource != null) {
+            // read raw, so what is written back into menu.yml keeps its & colour codes
             if (kitResource.contains("Menu.Name")) {
-                name = kitResource.getString("Menu.Name");
+                name = kitResource.fetchStringOrNull("Menu.Name");
             }
             if (kitResource.contains("Menu.Material")) {
-                material = kitResource.getString("Menu.Material");
+                material = kitResource.fetchStringOrNull("Menu.Material");
             } else if (kitResource.contains("Inventory.Items.0.Material")) {
-                material = kitResource.getString("Inventory.Items.0.Material");
+                material = kitResource.fetchStringOrNull("Inventory.Items.0.Material");
             }
             if (kitResource.contains("Menu.Lore")) {
-                lore = kitResource.getStringList("Menu.Lore");
+                lore = kitResource.getRawStringList("Menu.Lore");
             }
         }
 
@@ -117,6 +115,10 @@ public class Kits {
      * pages, see KitMenu).
      */
     private int findNextFreeMenuSlot(Resource menuConfig, int menuSize) {
+        if (menuSize <= 2) {
+            return -1;
+        }
+
         for (int slot = 0; slot < menuSize * 10; slot++) {
             int positionInPage = slot % menuSize;
             if (positionInPage == menuSize - 1 || positionInPage == menuSize - 2) {
@@ -131,7 +133,7 @@ public class Kits {
 
     public Kit createKitFromPlayer(Player player, String name) {
         Player p = player;
-        
+
         //          KIT             //
 
         Kit kit = new Kit(name);
@@ -141,7 +143,7 @@ public class Kits {
         kit.setLeggings(p.getInventory().getLeggings());
         kit.setBoots(p.getInventory().getBoots());
 
-        kit.setMaxHealth(Toolkit.getMaxHealth(p));
+        kit.setMaxHealth((int) Toolkit.getMaxHealth(p));
 
         for (PotionEffect effect : p.getActivePotionEffects()) {
             PotionEffectType type = effect.getType();
@@ -161,17 +163,19 @@ public class Kits {
 
             if (Toolkit.hasMatchingMaterial(item, "MUSHROOM_STEW")) {
                 ItemMeta itemMeta = item.getItemMeta();
-                itemMeta.setDisplayName(resources.getConfig().fetchString("Soups.Name"));
-                itemMeta.setLore(Toolkit.colorizeList(resources.getConfig().getStringList("Soups.Lore")));
-                item.setItemMeta(itemMeta);
+                if (itemMeta != null) {
+                    itemMeta.setDisplayName(resources.getConfig().fetchString("Soups.Name"));
+                    itemMeta.setLore(Toolkit.colorizeList(resources.getConfig().getStringList("Soups.Lore")));
+                    item.setItemMeta(itemMeta);
+                }
             }
 
             kit.setInventoryItem(i, item);
         }
-        
+
         if (Toolkit.versionToNumber() >= 19) {
             ItemStack offhandItem = p.getInventory().getItemInOffHand();
-            if (offhandItem != null) {
+            if (!Toolkit.isEmpty(offhandItem)) {
                 kit.setOffhand(offhandItem);
             }
         }
@@ -201,11 +205,16 @@ public class Kits {
 
     private Kit createKitFromResource(Resource resource) throws IllegalAccessException, NoSuchMethodException,
             InvocationTargetException {
-        Kit kit = new Kit(trimName(resource.getName()));
+        String kitName = Resources.trimYamlSuffix(resource.getName());
+        Kit kit = new Kit(kitName);
 
-        kit.setPermission(resource.fetchString("Kit.Permission"));
+        // a kit file with no permission is open to everyone rather than gated
+        // behind a node nobody can grant
+        kit.setPermission(resource.contains("Kit.Permission") ?
+                resource.fetchString("Kit.Permission") : "kp.kit." + kitName);
         kit.setLevel(resource.getInt("Kit.Level"));
-        kit.setCooldown(new Cooldown(resource.fetchString("Kit.Cooldown")));
+        kit.setCooldown(new Cooldown(resource.contains("Kit.Cooldown") ?
+                String.valueOf(resource.get("Kit.Cooldown")) : "0"));
 
         kit.setMaxHealth(resource.contains("Kit.Health") ? resource.getInt("Kit.Health") : 20);
 
@@ -244,51 +253,58 @@ public class Kits {
         return kit;
     }
 
-    public void attemptToGiveKitToPlayer(Player player, Kit kit) {
+    /** Returns true when the player actually walked away with the kit. */
+    public boolean attemptToGiveKitToPlayer(Player player, Kit kit) {
         Player p = player;
 
         if (kit == null) {
             p.sendMessage(messages.fetchString("Messages.Error.Lost"));
-            return;
+            return false;
         }
 
         if (!kit.meetsVersionRequirement()) {
             p.sendMessage(messages.fetchString("Messages.Error.KitVersion")
                     .replace("%version%", kit.getMinimumVersion()));
-            return;
+            return false;
         }
 
         if (kit.getUnsupportedMaterial() != null) {
             p.sendMessage(messages.fetchString("Messages.Error.KitUnsupported"));
-            Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cKit " + kit.getName() + " is disabled: material " +
+            Toolkit.warnOnce("kit-unsupported:" + kit.getName(),
+                    "&7[&b&lKIT-PVP&7] &cKit " + kit.getName() + " is disabled: material " +
                     kit.getUnsupportedMaterial() + " does not exist on this server version.");
-            return;
+            return false;
         }
 
-        if (!p.hasPermission(kit.getPermission())) {
+        if (kit.getPermission() != null && !kit.getPermission().isEmpty() && !p.hasPermission(kit.getPermission())) {
             p.sendMessage(messages.fetchString("Messages.General.Permission")
                     .replace("%permission%", kit.getPermission()));
-            return;
+            return false;
         }
 
         if (!(Toolkit.getPermissionAmount(p, "kp.levelbypass.", 0) >= kit.getLevel() ||
                 arena.getStats().getStat("level", p.getName()) >= kit.getLevel())) {
             p.sendMessage(messages.fetchString("Messages.Other.Needed")
                     .replace("%level%", String.valueOf(kit.getLevel())));
-            return;
+            return false;
         }
 
         Cooldown cooldownRemaining = arena.getCooldowns().getRemainingCooldown(p, kit);
         if (!p.hasPermission("kp.cooldownbypass") && cooldownRemaining.toSeconds() > 0) {
             p.sendMessage(messages.fetchString("Messages.Error.CooldownKit")
                     .replace("%cooldown%", cooldownRemaining.formatted(false)));
-            return;
+            return false;
         }
 
         if (playerHasKit(player.getName())) {
             p.sendMessage(messages.fetchString("Messages.Error.Selected"));
             Toolkit.playSoundToPlayer(p, "ENTITY_ENDER_DRAGON_HURT", 1);
-            return;
+            return false;
+        }
+
+        // swapping kits mid-fight is the same escape as clearing one
+        if (!p.hasPermission("kp.combattag.bypass") && plugin.getCombatTagger().denyIfTagged(p)) {
+            return false;
         }
 
         if (resources.getConfig().getBoolean("Arena.ClearInventoryOnKit")) {
@@ -297,6 +313,7 @@ public class Kits {
         }
 
         kit.apply(p);
+        p.closeInventory(); // the kit menu closes once a kit is actually handed over, not before
         p.sendMessage(messages.fetchString("Messages.Commands.Kit").replace("%kit%", kit.getName()));
         Toolkit.playSoundToPlayer(p, "ENTITY_HORSE_ARMOR", 1);
 
@@ -313,6 +330,8 @@ public class Kits {
             Toolkit.runCommands(p, kitResource.getStringList("Commands"),
                     "none", "none");
         }
+
+        return true;
     }
 
     /**
@@ -323,7 +342,7 @@ public class Kits {
     private String findUnsupportedMaterial(Resource resource) {
         for (String key : resource.getKeys(true)) {
             if (key.endsWith("Material")) {
-                String materialName = resource.fetchString(key);
+                String materialName = resource.fetchStringOrNull(key);
                 if (!Toolkit.isMaterialSupported(materialName)) {
                     return materialName;
                 }
@@ -341,7 +360,7 @@ public class Kits {
         int serverVersion = Toolkit.versionToNumber();
 
         for (Resource kitResource : resources.getKitResources()) {
-            String kitName = trimName(kitResource.getName());
+            String kitName = Resources.trimYamlSuffix(kitResource.getName());
 
             if (kitResource.contains("Kit.MinimumVersion")) {
                 String minimumVersion = String.valueOf(kitResource.get("Kit.MinimumVersion"));
@@ -361,20 +380,30 @@ public class Kits {
     }
 
     private Kit loadKitFromCacheOrCreate(String kitName) {
-        if (!CacheManager.getKitCache().containsKey(kitName)) {
-            if (isKit(kitName)) {
-                Resource kit = resources.getKit(kitName);
-                try {
-                    CacheManager.getKitCache().put(kitName, createKitFromResource(kit));
-                } catch (IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
-                    e.printStackTrace();
-                }
-            } else {
-                Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cNo kit with name " + kitName + " found in the kits folder." +
-                        " Try reloading the server.");
-            }
+        String resolvedName = resources.resolveKitName(kitName);
+
+        if (resolvedName == null) {
+            return null;
         }
-        return CacheManager.getKitCache().get(kitName);
+
+        Kit cachedKit = CacheManager.getKitCache().get(resolvedName);
+        if (cachedKit != null) {
+            return cachedKit;
+        }
+
+        Resource kitResource = resources.getKit(resolvedName);
+        if (kitResource == null) {
+            return null;
+        }
+
+        try {
+            Kit loadedKit = createKitFromResource(kitResource);
+            CacheManager.getKitCache().put(resolvedName, loadedKit);
+            return loadedKit;
+        } catch (IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+            Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cCould not read kit " + resolvedName + ": " + e.getMessage());
+            return null;
+        }
     }
 
     public Kit getKitByName(String kitName) {
@@ -389,14 +418,29 @@ public class Kits {
         return loadKitFromCacheOrCreate(kitName);
     }
 
+    /** Kit names are matched without regard to case, so "/kp kit fighter" works. */
     public boolean isKit(String kitName) {
-        return resources.getPluginDirectoryFiles("kits", false).contains(kitName);
+        return resources.resolveKitName(kitName) != null;
+    }
+
+    public String resolveKitName(String kitName) {
+        return resources.resolveKitName(kitName);
+    }
+
+    public List<String> getKitNames() {
+        return resources.getKitNames();
     }
 
     public void deleteKit(String kitName) {
-        resources.removeResource(kitName + ".yml");
-        plugin.getDatabase().deleteKitCooldownTable(kitName);
-        CacheManager.getKitCache().remove(kitName);
+        String resolvedName = resources.resolveKitName(kitName);
+        if (resolvedName == null) {
+            return;
+        }
+
+        resources.removeResource(resolvedName + ".yml");
+        plugin.getDatabase().deleteKitCooldownTable(resolvedName);
+        CacheManager.getKitCache().remove(resolvedName);
+        playerKits.values().removeIf(resolvedName::equals);
     }
 
     public void setPlayerKit(String playerName, String kitName) {
@@ -409,11 +453,6 @@ public class Kits {
 
     public void resetPlayerKit(String playerName) {
         playerKits.remove(playerName);
-    }
-
-    private String trimName(String kitNameWithFileEnding) {
-        String[] splitName = kitNameWithFileEnding.split(".yml");
-        return splitName[0];
     }
 
 }

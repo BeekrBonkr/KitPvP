@@ -1,6 +1,7 @@
 package com.planetgallium.kitpvp.game;
 
 import java.util.HashMap;
+import java.util.Map;
 
 import com.cryptomorin.xseries.messages.Titles;
 import com.planetgallium.kitpvp.util.*;
@@ -9,58 +10,56 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+/**
+ * Kill streaks are driven by Arena.creditKill rather than by their own death
+ * listener, so a streak counts exactly the kills that the stats count — including
+ * kills by TNT, projectiles and abilities, which the old listener missed.
+ */
 public class KillStreaks implements Listener {
 
 	private final Resources resources;
 	private final Resource killConfig;
-	private final HashMap<String, Integer> kills;
-	
+	private final Map<String, Integer> kills;
+
 	public KillStreaks(Resources resources) {
 		this.resources = resources;
 		this.killConfig = resources.getKillStreaks();
 		this.kills = new HashMap<>();
 	}
-	
-	@EventHandler
-	public void onKill(PlayerDeathEvent e) {
-		if (Toolkit.inArena(e.getEntity())) {
-			Player damager = e.getEntity().getKiller();
-			Player damagedPlayer = e.getEntity();
 
-			if (damager != null && !damager.getName().equals(damagedPlayer.getName())) {
-				kills.put(damager.getName(), getStreak(damager.getName()) + 1);
-				runStreakCase("KillStreaks", damager);
-				runStreakCase("EndStreaks", damagedPlayer);
-				kills.put(damagedPlayer.getName(), 0);
-				
-			} else {
-				kills.put(damagedPlayer.getName(), 0);
-				runStreakCase("EndStreaks", damagedPlayer);
-			}
-			
-		}
+	/** One more kill for this player, announcing whatever the new streak has earned. */
+	public void addKill(Player killer) {
+		kills.put(killer.getName(), getStreak(killer.getName()) + 1);
+		runStreakCase("KillStreaks", killer);
 	}
-	
+
+	/** Ends a streak, announcing the loss first while the number is still meaningful. */
+	public void endStreak(Player player) {
+		if (getStreak(player.getName()) > 0) {
+			runStreakCase("EndStreaks", player);
+		}
+		kills.put(player.getName(), 0);
+	}
+
 	@EventHandler
 	public void createStreak(PlayerJoinEvent e) {
 		Player p = e.getPlayer();
 
 		if (!kills.containsKey(p.getName())) {
-			kills.put(e.getPlayer().getName(), 0);
+			kills.put(p.getName(), 0);
 		}
 	}
-	
+
 	@EventHandler
 	public void removeStreak(PlayerQuitEvent e) {
-		if (resources.getConfig().getBoolean("Arena.ResetKillStreakOnLeave")) {
-			kills.put(e.getPlayer().getName(), 0);
-		}
+		// the entry is dropped entirely rather than zeroed, so the map does not grow
+		// by one dead entry for every player the server has ever seen
+		kills.remove(e.getPlayer().getName());
 	}
-	
+
 	public void runStreakCase(String streakType, Player p) {
 		String username = p.getName();
 		int streakNumber = getStreak(username);
@@ -88,9 +87,10 @@ public class KillStreaks implements Listener {
 			if (killConfig.contains(pathPrefix + ".Sound")) {
 				Sound sound = Toolkit.safeSound(killConfig.fetchString(pathPrefix + ".Sound.Sound"));
 				int pitch = killConfig.getInt(pathPrefix + ".Sound.Pitch");
+				float clampedPitch = Math.max(0.5f, Math.min(2.0f, pitch <= 0 ? 1.0f : (float) pitch));
 
 				for (Player local : world.getPlayers()) {
-					local.playSound(local.getLocation(), sound, 1, pitch);
+					local.playSound(local.getLocation(), sound, 1, clampedPitch);
 				}
 			}
 
@@ -112,26 +112,24 @@ public class KillStreaks implements Listener {
 			}
 
 		}
-		
-	}
-	
-	public int getStreak(String username) {
-		if (!kills.containsKey(username)) {
-			kills.put(username, 0);
-		}
 
-		return kills.get(username);
 	}
-	
+
+	public int getStreak(String username) {
+		Integer streak = kills.get(username);
+		return streak == null ? 0 : streak;
+	}
+
 	public void resetStreak(Player p) {
-		if (kills.containsKey(p.getName())) {
-			runStreakCase("EndStreaks", p);
-			kills.put(p.getName(), 0);
-		}
+		endStreak(p);
 	}
 
 	public void setStreak(Player p, int streak) {
 		kills.put(p.getName(), streak);
+	}
+
+	public void forget(String username) {
+		kills.remove(username);
 	}
 
 }

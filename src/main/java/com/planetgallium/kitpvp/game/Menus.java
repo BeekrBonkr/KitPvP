@@ -1,5 +1,6 @@
 package com.planetgallium.kitpvp.game;
 
+import com.planetgallium.kitpvp.Game;
 import com.planetgallium.kitpvp.menu.KitMenu;
 import com.planetgallium.kitpvp.menu.PreviewMenu;
 import com.planetgallium.kitpvp.menu.RefillMenu;
@@ -11,8 +12,8 @@ public class Menus {
     private final PreviewMenu previewMenu;
     private final RefillMenu refillMenu;
 
-    public Menus(Resources resources) {
-        this.kitMenu = new KitMenu(resources);
+    public Menus(Game plugin, Resources resources) {
+        this.kitMenu = new KitMenu(plugin, resources);
         this.previewMenu = new PreviewMenu();
         this.refillMenu = new RefillMenu(resources);
     }

@@ -19,10 +19,21 @@ public class Utilities {
         this.resources = plugin.getResources();
     }
 
+    /**
+     * The configured prefix for the player's level. Levels with no prefix of their
+     * own fall back to the plain level number rather than putting a placeholder
+     * string in front of every chat message.
+     */
     public String getPlayerLevelPrefix(String username) {
         String playerLevel = String.valueOf(arena.getStats().getStat("level", username));
-        return resources.getLevels().fetchString("Levels.Levels." + playerLevel + ".Prefix")
-                .replace("%level%", playerLevel);
+        String prefixPath = "Levels.Levels." + playerLevel + ".Prefix";
+
+        if (!resources.getLevels().contains(prefixPath)) {
+            return resources.getLevels().fetchString("Levels.Options.Default-Prefix", "&7Level %level%")
+                    .replace("%level%", playerLevel);
+        }
+
+        return resources.getLevels().fetchString(prefixPath).replace("%level%", playerLevel);
     }
 
     public String addPlaceholdersIfPossible(Player p, String text) {
@@ -37,6 +48,10 @@ public class Utilities {
         // The reason I'm doing all these if statements rather than a more concise code solution is to reduce
         // the amount of data that is unnecessarily fetched (ex by using .replace) to improve performance
         // no longer constantly fetching stats from database for EACH line of scoreboard on update and player join
+
+        if (s == null) {
+            return "";
+        }
 
         if (s.contains("%streak%")) {
             s = s.replace("%streak%", String.valueOf(arena.getKillStreaks().getStreak(username)));
@@ -84,20 +99,33 @@ public class Utilities {
             if (arena.getKits().getKitOfPlayer(username) != null) {
                 s = s.replace("%kit%", arena.getKits().getKitOfPlayer(username).getName());
             } else {
-                s = s.replace("%kit%", "None");
+                s = s.replace("%kit%", resources.getMessages().fetchString("Messages.Other.NoKit", "None"));
             }
+        }
+
+        if (s.contains("%combat%")) {
+            org.bukkit.entity.Player online = org.bukkit.Bukkit.getPlayerExact(username);
+            int seconds = online == null ? 0 : plugin.getCombatTagger().getSecondsRemaining(online);
+            s = s.replace("%combat%", String.valueOf(seconds));
         }
 
         return s;
     }
 
     public boolean isCombatActionPermittedInRegion(Player p) {
+        return isCombatActionPermittedInRegion(p, true);
+    }
+
+    /** sendMessage is false for repeating checks, so a running ability cannot spam the player. */
+    public boolean isCombatActionPermittedInRegion(Player p, boolean sendMessage) {
         if (plugin.hasWorldGuard()) {
             if (WorldGuardAPI.getInstance().allows(p, WorldGuardFlag.PVP.getFlag())) {
                 return true;
             }
 
-            p.sendMessage(resources.getMessages().fetchString("Messages.Error.PVP"));
+            if (sendMessage) {
+                p.sendMessage(resources.getMessages().fetchString("Messages.Error.PVP"));
+            }
             return false;
         }
         return true;

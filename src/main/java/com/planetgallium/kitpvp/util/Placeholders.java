@@ -14,10 +14,12 @@ import java.util.Map;
 
 public class Placeholders extends PlaceholderExpansion {
 
+	private final Game plugin;
 	private final Arena arena;
 	private final Map<String, String> placeholderAPItoBuiltIn;
-	
+
 	public Placeholders(Game plugin) {
+		this.plugin = plugin;
 		this.arena = plugin.getArena();
 		this.placeholderAPItoBuiltIn = new HashMap<>();
 
@@ -31,11 +33,12 @@ public class Placeholders extends PlaceholderExpansion {
 		placeholderAPItoBuiltIn.put("max_level", "%max_level%");
 		placeholderAPItoBuiltIn.put("max_xp", "%max_xp%");
 		placeholderAPItoBuiltIn.put("level_prefix", "%level_prefix%");
+		placeholderAPItoBuiltIn.put("combat_seconds", "%combat%");
 	}
 	
 	@Override
 	public String onPlaceholderRequest(Player p, @NotNull String identifier) {
-		if (identifier.contains("top")) {
+		if (identifier.startsWith("top_")) {
 			return handleLeaderboardPlaceholder(identifier);
 		}
 
@@ -45,8 +48,17 @@ public class Placeholders extends PlaceholderExpansion {
 		return null;
 	}
 
+	/** Expects top_<type>_<player|amount>_<rank>; anything shorter is reported, not thrown. */
 	private String handleLeaderboardPlaceholder(String identifier) {
 		String[] queries = identifier.split("_");
+
+		if (queries.length < 4) {
+			Toolkit.warnOnce("placeholder:" + identifier,
+					"&7[&b&lKIT-PVP&7] &cThe placeholder %kitpvp_" + identifier + "% is incomplete. " +
+					"Use %kitpvp_top_<kills|deaths|level>_<player|amount>_<rank>%.");
+			return "invalid-placeholder";
+		}
+
 		String topType = queries[1]; // ex: kills
 		String topIdentifier = queries[2]; // ex: amount, player
 		String possibleTopValue = queries[3]; // 1, 15
@@ -55,7 +67,8 @@ public class Placeholders extends PlaceholderExpansion {
 		if (StringUtils.isNumeric(possibleTopValue)) {
 			topValue = Integer.parseInt(possibleTopValue);
 		} else {
-			Toolkit.printToConsole("%prefix% &cFailed to properly parse placeholder, " +
+			Toolkit.warnOnce("placeholder-number:" + identifier,
+					"&7[&b&lKIT-PVP&7] &cFailed to properly parse placeholder, " +
 					"expected number but received: " + possibleTopValue);
 		}
 
@@ -70,7 +83,8 @@ public class Placeholders extends PlaceholderExpansion {
 			String toBuiltInPlaceholder = placeholderAPItoBuiltIn.get(placeholderAPIIdentifier);
 			return arena.getUtilities().replaceBuiltInPlaceholdersIfPresent(toBuiltInPlaceholder, username);
 		} else {
-			Toolkit.printToConsole(String.format("&7[&b&lKIT-PVP&7] &cUnknown placeholder identifier [%s]. " +
+			Toolkit.warnOnce("placeholder-unknown:" + placeholderAPIIdentifier,
+					String.format("&7[&b&lKIT-PVP&7] &cUnknown placeholder identifier [%s]. " +
 							"Please see plugin page.", placeholderAPIIdentifier));
 			return "invalid-placeholder";
 		}
@@ -89,6 +103,6 @@ public class Placeholders extends PlaceholderExpansion {
 	public @NotNull String getIdentifier() { return "kitpvp"; }
 	
 	@Override
-	public @NotNull String getVersion() { return "1.0.0"; }
+	public @NotNull String getVersion() { return plugin.getDescription().getVersion(); }
 	
 }

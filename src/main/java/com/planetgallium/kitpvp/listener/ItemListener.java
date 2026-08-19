@@ -1,6 +1,7 @@
 package com.planetgallium.kitpvp.listener;
 
 import com.cryptomorin.xseries.XMaterial;
+import com.cryptomorin.xseries.XPotion;
 import com.planetgallium.kitpvp.Game;
 import com.planetgallium.kitpvp.api.Kit;
 import com.planetgallium.kitpvp.game.Arena;
@@ -34,9 +35,21 @@ import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class ItemListener implements Listener {
+
+	/**
+	 * The Witch's potion pool, by name rather than by PotionType constant: the
+	 * constants were renamed in 1.20.5 (INSTANT_HEAL became HEALING and so on),
+	 * which turned the old list into a NoSuchFieldError on newer servers.
+	 * Weights match the original roll: 10/10/20/20/20/20 out of 100.
+	 */
+	private static final String[] WITCH_POTION_NAMES =
+			{"INSTANT_DAMAGE", "INSTANT_HEAL", "POISON", "REGENERATION", "SPEED", "SLOWNESS"};
+	private static final int[] WITCH_POTION_WEIGHTS = {10, 10, 20, 20, 20, 20};
 
 	private final Game plugin;
 	private final Arena arena;
@@ -44,7 +57,10 @@ public class ItemListener implements Listener {
 	private final Resources resources;
 	private final Resource config;
 	private final Resource abilities;
-	
+	private final Random random = new Random();
+
+	private List<PotionType> witchPotionPool;
+
 	public ItemListener(Game plugin) {
 		this.plugin = plugin;
 		this.arena = plugin.getArena();
@@ -84,6 +100,11 @@ public class ItemListener implements Listener {
 				CacheManager.getPotionSwitcherUsers().add(p.getName());
 				Toolkit.setHandItemForInteraction(e, createWitchPotion());
 
+			} else if (isAbility(p, interactedItem, "Thunderbolt", "BLAZE_ROD") ||
+					isAbility(p, interactedItem, "Vampire", "GHAST_TEAR")) {
+				// these two only do anything when used on somebody
+				p.sendMessage(resources.getMessages().fetchString("Messages.Error.Player"));
+
 			} else if (isSplashPotion(interactedItem)) {
 				witchAbility(e, p, interactedItem, interactedItemMeta);
 
@@ -116,11 +137,16 @@ public class ItemListener implements Listener {
 			} else if (interactedItem.hasItemMeta()) {
 				ConfigurationSection items = config.getConfigurationSection("Items");
 
+				if (items == null) {
+					return;
+				}
+
 				for (String identifier : items.getKeys(false)) {
 					String itemPath = "Items." + identifier;
 
+					// a disabled item is skipped, not a reason to stop looking at the rest
 					if (!config.getBoolean(itemPath + ".Enabled")) {
-						return;
+						continue;
 					}
 
 					String itemMaterialName = config.fetchString(itemPath + ".Material");
@@ -133,7 +159,7 @@ public class ItemListener implements Listener {
 					}
 				}
 			}
-			
+
 		}
 	}
 
@@ -150,12 +176,6 @@ public class ItemListener implements Listener {
 			ItemStack interactedItem = Toolkit.getHandItemForInteraction(e);
 			Player damagedPlayer = (Player) e.getRightClicked();
 
-			if (config.getBoolean("Arena.NoKitProtection")) {
-				if (!arena.getKits().playerHasKit(damagedPlayer.getName())) {
-					return;
-				}
-			}
-
 			if (isAbility(damager, interactedItem, "Thunderbolt", "BLAZE_ROD")) {
 				thunderboltAbility(e, damager, damagedPlayer, interactedItem);
 
@@ -166,24 +186,25 @@ public class ItemListener implements Listener {
 	}
 
 	private boolean isBuiltInAbilityItem(Player p, String kitName, ItemStack interactedItem) {
-		if (Toolkit.hasMatchingDisplayName(interactedItem,
+		if (!Toolkit.hasMatchingDisplayName(interactedItem,
 				abilities.fetchString("Abilities." + kitName + ".Item.Name"))) {
-			String abilityPermission = "kp.ability." + kitName.toLowerCase();
-
-			if (p.hasPermission(abilityPermission)) {
-				if (config.getBoolean("Arena.AbilitiesRequireKit") && !arena.getKits().playerHasKit(p.getName())) {
-					p.sendMessage(resources.getMessages().fetchString("Messages.Error.Kit"));
-					return false;
-				}
-
-				return utilities.isCombatActionPermittedInRegion(p);
-			} else {
-				p.sendMessage(resources.getMessages().fetchString("Messages.General.Permission")
-						.replace("%permission%", abilityPermission));
-			}
+			return false;
 		}
 
-		return false;
+		// holding the kit is permission enough for the ability that comes with it,
+		// unless an admin has explicitly set the node either way
+		if (!arena.getAbilities().hasAbilityPermission(p, kitName)) {
+			p.sendMessage(resources.getMessages().fetchString("Messages.General.Permission")
+					.replace("%permission%", arena.getAbilities().getPermissionNode(kitName)));
+			return false;
+		}
+
+		if (config.getBoolean("Arena.AbilitiesRequireKit") && !arena.getKits().playerHasKit(p.getName())) {
+			p.sendMessage(resources.getMessages().fetchString("Messages.Error.Kit"));
+			return false;
+		}
+
+		return utilities.isCombatActionPermittedInRegion(p);
 	}
 
 	private void useBuiltInAbilityItem(Event e, Player p, Player clicked, ItemStack abilityItem,
@@ -196,8 +217,7 @@ public class ItemListener implements Listener {
 			p.sendMessage(abilityMessage);
 		}
 
-		abilityItem.setAmount(abilityItem.getAmount() - 1);
-		Toolkit.setHandItemForInteraction(e, abilityItem);
+		Toolkit.consumeOneHandItem(e, abilityItem);
 
 		if (abilities.getBoolean(abilityPrefix + ".Sound.Enabled")) {
 			Toolkit.playSoundToPlayer(p, abilities.fetchString(abilityPrefix + ".Sound.Sound"),
@@ -238,40 +258,42 @@ public class ItemListener implements Listener {
 
 			e.setCancelled(true);
 
-			useBuiltInAbilityItem(e, p, p, abilityItem, "none");
+			Toolkit.consumeOneHandItem(e, abilityItem);
 		}
 	}
 
 	private void warperAbility(PlayerInteractEvent e, Player p, ItemStack abilityItem) {
 		e.setCancelled(true);
 
-		String[] nearestData = Toolkit.getNearestPlayer(p, config.getInt("PlayerTracker.TrackBelowY"));
+		Toolkit.Nearest nearest = Toolkit.getNearestPlayer(p, config.getInt("PlayerTracker.TrackBelowY"));
 
-		if (Bukkit.getServer().getOnlinePlayers().size() > 1 && nearestData != null) {
-			String nearestPlayerUsername = nearestData[0];
-			Location nearestPlayerLocation = Bukkit.getPlayer(nearestPlayerUsername).getLocation();
-
-			if (arena.getKits().playerHasKit(nearestPlayerUsername)) {
-				new BukkitRunnable() {
-					@Override
-					public void run() {
-						p.teleport(nearestPlayerLocation);
-					}
-				}.runTaskLater(plugin, 5L);
-
-				p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 60, 5));
-				p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 80, 5));
-
-				useBuiltInAbilityItem(e, p, p, abilityItem, "Warper");
-			} else {
-				p.sendMessage(resources.getMessages().fetchString("Messages.Other.Players"));
-			}
-		} else {
+		if (nearest == null || !arena.getKits().playerHasKit(nearest.getPlayer().getName())) {
 			p.sendMessage(resources.getMessages().fetchString("Messages.Other.Players"));
+			return;
 		}
+
+		Player target = nearest.getPlayer();
+
+		p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 60, 5));
+		p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 80, 5));
+
+		useBuiltInAbilityItem(e, p, p, abilityItem, "Warper");
+
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				// the target may have moved or left in the meantime, so their position
+				// is read at the moment of the warp rather than when it was started
+				if (p.isOnline() && target.isOnline() && target.getWorld().equals(p.getWorld())) {
+					p.teleport(target.getLocation());
+				}
+			}
+		}.runTaskLater(plugin, 5L);
 	}
 
 	private void ninjaAbility(PlayerInteractEvent e, Player p, ItemStack abilityItem) {
+		Kit kitWhenUsed = arena.getKits().getKitOfPlayer(p.getName());
+
 		ItemStack previousHelmet = p.getInventory().getHelmet();
 		ItemStack previousChestplate = p.getInventory().getChestplate();
 		ItemStack previousLeggings = p.getInventory().getLeggings();
@@ -296,7 +318,11 @@ public class ItemListener implements Listener {
 		new BukkitRunnable() {
 			@Override
 			public void run() {
-				if (arena.getKits().playerHasKit(p.getName())) {
+				// only give the armour back if this is still the same kit it was taken
+				// from; otherwise a kit swap in the meantime would be handed Ninja's gear
+				Kit currentKit = arena.getKits().getKitOfPlayer(p.getName());
+
+				if (p.isOnline() && currentKit != null && currentKit == kitWhenUsed) {
 					p.getInventory().setHelmet(previousHelmet);
 					p.getInventory().setChestplate(previousChestplate);
 					p.getInventory().setLeggings(previousLeggings);
@@ -314,16 +340,21 @@ public class ItemListener implements Listener {
 
 			@Override
 			public void run() {
-				if (t != 0 && p.getGameMode() != GameMode.SPECTATOR && arena.getKits().playerHasKit(p.getName())) {
-					Entity entity = p.getWorld().spawn(p.getLocation(), TNTPrimed.class);
-					entity.setCustomName(p.getName());
-
-					Toolkit.playSoundToPlayer(p, abilities.fetchString("Abilities.Bomber.Sound.Sound"),
-							abilities.getInt("Abilities.Bomber.Sound.Pitch"));
-					t--;
-				} else {
+				// the run of TNT stops if the player leaves, dies, drops their kit or
+				// walks somewhere that combat is not allowed
+				if (t <= 0 || !p.isOnline() || p.getGameMode() == GameMode.SPECTATOR ||
+						!arena.getKits().playerHasKit(p.getName()) || !Toolkit.inArena(p) ||
+						!utilities.isCombatActionPermittedInRegion(p, false)) {
 					cancel();
+					return;
 				}
+
+				Entity entity = p.getWorld().spawn(p.getLocation(), TNTPrimed.class);
+				entity.setCustomName(p.getName());
+
+				Toolkit.playSoundToPlayer(p, abilities.fetchString("Abilities.Bomber.Sound.Sound"),
+						abilities.getInt("Abilities.Bomber.Sound.Pitch"));
+				t--;
 			}
 		}.runTaskTimer(plugin, 0L, 20L);
 
@@ -331,13 +362,22 @@ public class ItemListener implements Listener {
 	}
 
 	private void archerAbility(PlayerInteractEvent e, Player p, ItemStack abilityItem, ItemMeta abilityItemMeta) {
+		if (abilityItemMeta == null) {
+			return;
+		}
+
 		boolean shouldToggleOn = Toolkit.hasMatchingMaterial(abilityItem, "SLIME_BALL");
 		String firePath = shouldToggleOn ? "Fire" : "NoFire";
 		String fireItem = shouldToggleOn ? "MAGMA_CREAM" : "SLIME_BALL";
 
 		if (Toolkit.hasMatchingDisplayName(abilityItem, abilities.fetchString("Abilities.Archer.Item.Fire")) ||
 				Toolkit.hasMatchingDisplayName(abilityItem, abilities.fetchString("Abilities.Archer.Item.NoFire"))) {
-			abilityItem.setType(XMaterial.matchXMaterial(fireItem).get().parseMaterial());
+
+			if (!arena.getAbilities().hasAbilityPermission(p, "Archer")) {
+				return;
+			}
+
+			abilityItem.setType(Toolkit.safeMaterial(fireItem));
 			abilityItemMeta.setDisplayName(abilities.fetchString("Abilities.Archer.Item." + firePath));
 			abilityItem.setItemMeta(abilityItemMeta);
 
@@ -352,27 +392,41 @@ public class ItemListener implements Listener {
 	}
 
 	private void witchAbility(PlayerInteractEvent e, Player p, ItemStack potionItem, ItemMeta abilityItemMeta) {
-		if (potionItem.hasItemMeta() && abilityItemMeta.hasLore() &&
+		if (potionItem.hasItemMeta() && abilityItemMeta != null && abilityItemMeta.hasLore() &&
 				Toolkit.singleLineLoreMatches(potionItem, "X")) {
 
 			Toolkit.SlotWrapper slotUsed = Toolkit.getSlotUsedForInteraction(e);
+			int heldSlot = p.getInventory().getHeldItemSlot();
 			ItemStack randomizedWitchPotion = createWitchPotion();
 
 			new BukkitRunnable() {
 				@Override
 				public void run() {
 					Kit playerKit = arena.getKits().getKitOfPlayer(p.getName());
-					if (playerKit != null && CacheManager.getPotionSwitcherUsers().contains(p.getName())) {
+
+					if (!p.isOnline() || playerKit == null ||
+							!CacheManager.getPotionSwitcherUsers().contains(p.getName())) {
+						return;
+					}
+
+					// only refill a slot that is still free, so whatever the player put
+					// there in the last five seconds is not quietly replaced
+					ItemStack current = p.getInventory().getItem(heldSlot);
+					if (Toolkit.isEmpty(current) || Toolkit.singleLineLoreMatches(current, "X")) {
 						slotUsed.placeItemInSlot(p, randomizedWitchPotion);
+					} else if (Toolkit.countEmptyMainSlots(p) > 0) {
+						p.getInventory().addItem(randomizedWitchPotion);
+					} else {
+						return;
+					}
 
-						if (abilities.getBoolean("Abilities.Witch.Message.Enabled")) {
-							p.sendMessage(abilities.fetchString("Abilities.Witch.Message.Message"));
-						}
+					if (abilities.getBoolean("Abilities.Witch.Message.Enabled")) {
+						p.sendMessage(abilities.fetchString("Abilities.Witch.Message.Message"));
+					}
 
+					if (abilities.getBoolean("Abilities.Witch.Sound.Enabled")) {
 						Toolkit.playSoundToPlayer(p, abilities.fetchString("Abilities.Witch.Sound.Sound"),
-								abilities.getInt("Abliities.Witch.Sound.Pitch"));
-
-						CacheManager.getPotionSwitcherUsers().add(p.getName());
+								abilities.getInt("Abilities.Witch.Sound.Pitch"));
 					}
 				}
 			}.runTaskLater(plugin, 5 * 20L);
@@ -382,7 +436,10 @@ public class ItemListener implements Listener {
 	private void thunderboltAbility(PlayerInteractEntityEvent e, Player damager, Player damagedPlayer,
 									ItemStack abilityItem) {
 		damager.getWorld().strikeLightningEffect(e.getRightClicked().getLocation());
-		damagedPlayer.damage(4.0);
+
+		// damage with an attacker attached, so the server credits the kill, the
+		// death message names them, and the streak counts it
+		damagedPlayer.damage(4.0, damager);
 		damagedPlayer.setFireTicks(5 * 20);
 
 		useBuiltInAbilityItem(e, damager, damagedPlayer, abilityItem, "Thunderbolt");
@@ -390,11 +447,12 @@ public class ItemListener implements Listener {
 
 	private void vampireAbliity(PlayerInteractEntityEvent e, Player damager, Player damagedPlayer,
 								ItemStack abilityItem) {
-		damagedPlayer.damage(4.0);
-		Toolkit.playSoundToPlayer(damagedPlayer, "ENTITY_GENERIC_DRINK", -1);
+		damagedPlayer.damage(4.0, damager);
+		Toolkit.playSoundToPlayer(damagedPlayer, "ENTITY_GENERIC_DRINK", 1);
 
-		if (damager.getHealth() <= 16.0) {
-			damager.setHealth(damager.getHealth() + 4.0);
+		double maxHealth = Toolkit.getMaxHealth(damager);
+		if (damager.getHealth() < maxHealth) {
+			damager.setHealth(Math.min(damager.getHealth() + 4.0, maxHealth));
 			damager.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 2, 1));
 		}
 
@@ -421,42 +479,61 @@ public class ItemListener implements Listener {
 	private void hitBySnowball(Player damagedPlayer, Snowball snowball) {
 		if (snowball.getCustomName() != null && snowball.getCustomName().equals("bullet")) {
 			if (Toolkit.inArena(damagedPlayer) && arena.getKits().playerHasKit(damagedPlayer.getName())) {
-				damagedPlayer.damage(4.5);
+				Player shooter = snowball.getShooter() instanceof Player ? (Player) snowball.getShooter() : null;
+
+				if (shooter != null) {
+					damagedPlayer.damage(4.5, shooter);
+				} else {
+					damagedPlayer.damage(4.5);
+				}
 			}
 		}
 	}
 
 	private void hitByEgg(Player damagedPlayer, Egg egg) {
-		if (Toolkit.hasMatchingDisplayName(egg.getItem(), abilities.fetchString("Abilities.Trickster.Item.Name"))) {
-			if (Toolkit.inArena(damagedPlayer) && arena.getKits().playerHasKit(damagedPlayer.getName())) {
+		if (!isTricksterEgg(egg)) {
+			return;
+		}
 
-				if (egg.getShooter() instanceof Player) {
-					Player shooter = (Player) egg.getShooter();
-					Location shooterLocation = shooter.getLocation();
+		if (Toolkit.inArena(damagedPlayer) && arena.getKits().playerHasKit(damagedPlayer.getName())) {
 
-					if (!utilities.isCombatActionPermittedInRegion(damagedPlayer)) {
-						shooter.sendMessage(resources.getMessages().fetchString("Messages.Error.PVP"));
-						return;
-					}
+			if (egg.getShooter() instanceof Player) {
+				Player shooter = (Player) egg.getShooter();
+				Location shooterLocation = shooter.getLocation();
 
-					shooter.teleport(damagedPlayer);
-					damagedPlayer.teleport(shooterLocation);
+				if (!utilities.isCombatActionPermittedInRegion(damagedPlayer, false)) {
+					shooter.sendMessage(resources.getMessages().fetchString("Messages.Error.PVP"));
+					return;
+				}
 
-					if (abilities.getBoolean("Abilities.Trickster.Message.Enabled")) {
-						shooter.sendMessage(abilities.fetchString("Abilities.Trickster.Message.Message")
-								.replace("%player%", damagedPlayer.getName()));
-					}
+				shooter.teleport(damagedPlayer);
+				damagedPlayer.teleport(shooterLocation);
 
-					if (abilities.getBoolean("Abilities.Trickster.Sound.Enabled")) {
-						Toolkit.playSoundToPlayer(shooter,
-								abilities.fetchString("Abilities.Trickster.Sound.Sound"),
-								abilities.getInt("Abilities.Trickster.Sound.Pitch"));
-						Toolkit.playSoundToPlayer(damagedPlayer,
-								abilities.fetchString("Abilities.Trickster.Sound.Sound"),
-								abilities.getInt("Abilities.Trickster.Sound.Pitch"));
-					}
+				if (abilities.getBoolean("Abilities.Trickster.Message.Enabled")) {
+					shooter.sendMessage(abilities.fetchString("Abilities.Trickster.Message.Message")
+							.replace("%player%", damagedPlayer.getName()));
+				}
+
+				if (abilities.getBoolean("Abilities.Trickster.Sound.Enabled")) {
+					Toolkit.playSoundToPlayer(shooter,
+							abilities.fetchString("Abilities.Trickster.Sound.Sound"),
+							abilities.getInt("Abilities.Trickster.Sound.Pitch"));
+					Toolkit.playSoundToPlayer(damagedPlayer,
+							abilities.fetchString("Abilities.Trickster.Sound.Sound"),
+							abilities.getInt("Abilities.Trickster.Sound.Pitch"));
 				}
 			}
+		}
+	}
+
+	/** Egg#getItem does not exist before 1.15, so the check degrades instead of throwing. */
+	private boolean isTricksterEgg(Egg egg) {
+		try {
+			return Toolkit.hasMatchingDisplayName(egg.getItem(),
+					abilities.fetchString("Abilities.Trickster.Item.Name"));
+		} catch (Throwable ignored) {
+			return egg.getShooter() instanceof Player &&
+					arena.getKits().playerHasKit(((Player) egg.getShooter()).getName());
 		}
 	}
 
@@ -465,11 +542,11 @@ public class ItemListener implements Listener {
 		if (e.getEntity() instanceof Player && Toolkit.inArena(e.getEntity())) {
 			Player p = (Player) e.getEntity();
 
-			if (!p.hasPermission("kp.ability.archer")) {
+			if (!arena.getAbilities().hasAbilityPermission(p, "Archer")) {
 				return;
 			}
 
-			int ammoSlot = getItemByMeta(Material.MAGMA_CREAM,
+			int ammoSlot = getItemByMeta(Toolkit.safeMaterial("MAGMA_CREAM"),
 					abilities.fetchString("Abilities.Archer.Item.Fire"), p);
 
 			if (ammoSlot != -1) {
@@ -479,7 +556,7 @@ public class ItemListener implements Listener {
 				Toolkit.playSoundToPlayer(p, abilities.fetchString("Abilities.Archer.Sound.Sound"),
 						abilities.getInt("Abilities.Archer.Sound.Pitch"));
 
-				if (ammo.getAmount() == 1) {
+				if (ammo.getAmount() <= 1) {
 					p.getInventory().setItem(ammoSlot, new ItemStack(Material.AIR));
 				} else {
 					ammo.setAmount(ammo.getAmount() - 1);
@@ -489,13 +566,19 @@ public class ItemListener implements Listener {
 	}
 
 	private int getItemByMeta(Material type, String displayName, Player p) {
-		int inventorySize = Toolkit.versionToNumber() == 18 ? 39 : 45;
-		for (int i = 0; i <= inventorySize; i++) {
+		// the main inventory only: reading past its end used to depend on the
+		// server version being guessed correctly
+		for (int i = 0; i < 36; i++) {
 			ItemStack item = p.getInventory().getItem(i);
-			if (item != null) {
-				if (item.getType() == type && Toolkit.hasMatchingDisplayName(item, displayName)) {
-					return i;
-				}
+			if (item != null && item.getType() == type && Toolkit.hasMatchingDisplayName(item, displayName)) {
+				return i;
+			}
+		}
+
+		if (Toolkit.versionToNumber() >= 19) {
+			ItemStack offhand = p.getInventory().getItemInOffHand();
+			if (offhand.getType() == type && Toolkit.hasMatchingDisplayName(offhand, displayName)) {
+				return 40;
 			}
 		}
 		return -1;
@@ -504,53 +587,58 @@ public class ItemListener implements Listener {
 	private ItemStack createWitchPotion() {
 		PotionType randomPotionType = randomPotionType();
 
-		if (Toolkit.versionToNumber() >= 121) { // 1.21+
-			ItemStack potionStack = new ItemStack(Material.SPLASH_POTION);
-			Toolkit.appendToLore(potionStack, "X");
-			PotionMeta potionMeta = (PotionMeta) potionStack.getItemMeta();
+		ItemStack potionStack = Toolkit.safeItemStack(
+				Toolkit.versionToNumber() == 18 ? "POTION" : "SPLASH_POTION");
 
-			if (potionMeta != null) {
-				potionMeta.setBasePotionType(randomPotionType);
-				potionStack.setItemMeta(potionMeta);
-			}
-
-			return potionStack;
-		} else { // pre 1.21
+		if (Toolkit.versionToNumber() == 18) {
+			// the legacy Potion class is the only way to make a splash potion on 1.8
 			Potion potion = new Potion(randomPotionType, 1);
 			potion.setSplash(true);
 
-			ItemStack potionStack = potion.toItemStack(1);
+			potionStack = potion.toItemStack(1);
 			Toolkit.appendToLore(potionStack, "X");
-
 			return potionStack;
 		}
-	}
-	
-	private PotionType randomPotionType() {
-		PotionType potion = null;
-		
-		Random ran = new Random();
-		int chance = ran.nextInt(100);
-		
-		if (chance < 10) {
-			potion = PotionType.INSTANT_DAMAGE;
-		} else if (chance < 20) {
-			potion = PotionType.INSTANT_HEAL;
-		} else if (chance < 40) {
-			potion = PotionType.POISON;
-		} else if (chance < 60) {
-			potion = PotionType.REGEN;
-		} else if (chance < 80) {
-			potion = PotionType.SPEED;
-		} else if (chance < 100) {
-			potion = PotionType.SLOWNESS;
+
+		ItemMeta meta = potionStack.getItemMeta();
+		if (meta instanceof PotionMeta && randomPotionType != null) {
+			Toolkit.applyBasePotionType((PotionMeta) meta, randomPotionType);
+			potionStack.setItemMeta(meta);
 		}
-		return potion;
+
+		Toolkit.appendToLore(potionStack, "X");
+		return potionStack;
+	}
+
+	private PotionType randomPotionType() {
+		if (witchPotionPool == null) {
+			witchPotionPool = new ArrayList<>();
+
+			for (int i = 0; i < WITCH_POTION_NAMES.length; i++) {
+				PotionType resolved = XPotion.matchXPotion(WITCH_POTION_NAMES[i])
+						.map(XPotion::getPotionType).orElse(null);
+
+				if (resolved == null) {
+					Toolkit.warnOnce("witch-potion:" + WITCH_POTION_NAMES[i],
+							"&7[&b&lKIT-PVP&7] &eThe Witch potion " + WITCH_POTION_NAMES[i] +
+							" does not exist on this server version and was left out of the pool.");
+					continue;
+				}
+
+				for (int weight = 0; weight < WITCH_POTION_WEIGHTS[i]; weight++) {
+					witchPotionPool.add(resolved);
+				}
+			}
+		}
+
+		if (witchPotionPool.isEmpty()) {
+			return null;
+		}
+		return witchPotionPool.get(random.nextInt(witchPotionPool.size()));
 	}
 
 	public boolean isSplashPotion(ItemStack item) {
-		int serverVersion = Toolkit.versionToNumber();
-		return Toolkit.hasMatchingMaterial(item, serverVersion == 18 ? "POTION" : "SPLASH_POTION");
+		return Toolkit.hasMatchingMaterial(item, Toolkit.versionToNumber() == 18 ? "POTION" : "SPLASH_POTION");
 	}
 
 }
