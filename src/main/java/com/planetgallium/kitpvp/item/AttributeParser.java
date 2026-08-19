@@ -21,7 +21,6 @@ import java.util.*;
 public class AttributeParser {
 
     // PotionEffect
-    private static final PotionEffectType FALLBACK_EFFECT_TYPE = PotionEffectType.CONFUSION;
     private static final int FALLBACK_EFFECT_DURATION_SECONDS = 10;
     private static final int FALLBACK_EFFECT_AMPLIFIER_NON_ZERO_BASED = 1;
 
@@ -31,6 +30,15 @@ public class AttributeParser {
     private static final Enchantment FALLBACK_ITEM_ENCHANTMENT = Enchantment.THORNS;
     private static final int FALLBACK_ITEM_ENCHANTMENT_AMPLIFIER = 1;
 
+    /**
+     * Potion types that have a level II variant, by name rather than by constant:
+     * the PotionType constants were renamed in 1.20.5, so naming them directly
+     * stops the class loading on newer servers.
+     */
+    private static final Set<String> UPGRADEABLE_POTION_NAMES = new HashSet<>(Arrays.asList(
+            "INSTANT_DAMAGE", "HARMING", "INSTANT_HEAL", "HEALING", "JUMP", "LEAPING",
+            "POISON", "REGEN", "REGENERATION", "SPEED", "SWIFTNESS", "STRENGTH"));
+
     public static List<PotionEffect> getEffectsFromPath(Resource resource, String path) {
 
         List<PotionEffect> effects = new ArrayList<>();
@@ -39,11 +47,12 @@ public class AttributeParser {
         if (effectsSection != null) {
 
             for (String effectName : effectsSection.getKeys(false)) {
-                PotionEffectType type = XPotion.matchXPotion(effectName).get().getPotionEffectType();
+                // an unknown effect name used to throw out of kit loading entirely
+                PotionEffectType type = Toolkit.safePotionEffectType(effectName);
                 int amplifier = resource.getInt(path + "." + effectName + ".Amplifier");
                 int duration = resource.getInt(path + "." + effectName + ".Duration");
 
-                effects.add(new PotionEffect(type != null ? type : FALLBACK_EFFECT_TYPE,
+                effects.add(new PotionEffect(type,
                         duration != 0 ? duration : FALLBACK_EFFECT_DURATION_SECONDS,
                         amplifier != 0 ? amplifier : FALLBACK_EFFECT_AMPLIFIER_NON_ZERO_BASED));
             }
@@ -63,12 +72,14 @@ public class AttributeParser {
 
         //          BASIC ITEM INFORMATION          //
 
-        if (resource.contains(path + ".Name")) {
-            meta.setDisplayName(resource.fetchString(path + ".Name"));
-        }
+        if (meta != null) {
+            if (resource.contains(path + ".Name")) {
+                meta.setDisplayName(resource.fetchString(path + ".Name"));
+            }
 
-        if (resource.contains(path + ".Lore")) {
-            meta.setLore(resource.getStringList(path + ".Lore"));
+            if (resource.contains(path + ".Lore")) {
+                meta.setLore(resource.getStringList(path + ".Lore"));
+            }
         }
 
         if (resource.contains(path + ".Material")) {
@@ -79,12 +90,15 @@ public class AttributeParser {
         }
 
         if (resource.contains(path + ".Amount")) {
-            item.setAmount(resource.getInt(path + ".Amount"));
+            int amount = resource.getInt(path + ".Amount");
+            item.setAmount(Math.max(1, Math.min(amount, item.getType().getMaxStackSize())));
         } else {
             item.setAmount(FALLBACK_ITEM_AMOUNT);
         }
 
-        item.setItemMeta(meta);
+        if (meta != null) {
+            item.setItemMeta(meta);
+        }
 
         //              CUSTOM ATTRIBUTES            //
 
@@ -112,18 +126,23 @@ public class AttributeParser {
             Map<Enchantment, Integer> enchantments = new HashMap<>();
             ConfigurationSection section = resource.getConfigurationSection(path + ".Enchantments");
 
-            for (String enchantmentName : section.getKeys(false)) {
-                Enchantment enchantment = FALLBACK_ITEM_ENCHANTMENT;
-                Optional<XEnchantment> enchantmentFromConfig = XEnchantment.matchXEnchantment(enchantmentName.toUpperCase());
-                if (enchantmentFromConfig.isPresent()) {
-                    enchantment = enchantmentFromConfig.get().getEnchant();
-                } else {
-                    Toolkit.printToConsole(String.format("&7[&b&lKIT-PVP&7] &cUnknown enchantment [%s], defaulting to [THORNS].", enchantmentName));
-                }
-                int amplifier = resource.getInt(path + ".Enchantments." + enchantmentName);
+            if (section != null) {
+                for (String enchantmentName : section.getKeys(false)) {
+                    Enchantment enchantment = FALLBACK_ITEM_ENCHANTMENT;
+                    Optional<XEnchantment> enchantmentFromConfig =
+                            XEnchantment.matchXEnchantment(enchantmentName.toUpperCase());
+                    if (enchantmentFromConfig.isPresent()) {
+                        enchantment = enchantmentFromConfig.get().getEnchant();
+                    } else {
+                        Toolkit.warnOnce("enchantment:" + enchantmentName,
+                                String.format("&7[&b&lKIT-PVP&7] &cUnknown enchantment [%s], defaulting to [THORNS].",
+                                        enchantmentName));
+                    }
+                    int amplifier = resource.getInt(path + ".Enchantments." + enchantmentName);
 
-                enchantments.put(enchantment != null ? enchantment : FALLBACK_ITEM_ENCHANTMENT,
-                        amplifier != 0 ? amplifier : FALLBACK_ITEM_ENCHANTMENT_AMPLIFIER);
+                    enchantments.put(enchantment != null ? enchantment : FALLBACK_ITEM_ENCHANTMENT,
+                            amplifier != 0 ? amplifier : FALLBACK_ITEM_ENCHANTMENT_AMPLIFIER);
+                }
             }
 
             item.addUnsafeEnchantments(enchantments);
@@ -136,7 +155,7 @@ public class AttributeParser {
         if (Toolkit.versionToNumber() < 113) {
             item.setDurability((short) damageAmount);
 
-        } else if (Toolkit.versionToNumber() >= 113) {
+        } else {
             ItemMeta meta = item.getItemMeta();
 
             if (meta instanceof Damageable) {
@@ -146,77 +165,99 @@ public class AttributeParser {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private static void setSkull(ItemStack item, String skullOwner) {
         item.setType(XMaterial.PLAYER_HEAD.parseMaterial());
 
-        SkullMeta skullMeta = (SkullMeta) item.getItemMeta();
-        skullMeta.setOwner(skullOwner);
-
-        item.setItemMeta(skullMeta);
-    }
-
-    private static void dyeItem(ItemStack item, Color color) {
-        if (Toolkit.hasMatchingMaterial(item, "LEATHER_HELMET") ||
-                Toolkit.hasMatchingMaterial(item, "LEATHER_CHESTPLATE") ||
-                Toolkit.hasMatchingMaterial(item, "LEATHER_LEGGINGS") ||
-                Toolkit.hasMatchingMaterial(item, "LEATHER_BOOTS")) {
-
-            LeatherArmorMeta dyedMeta = (LeatherArmorMeta) item.getItemMeta();
-            dyedMeta.setColor(color);
-            item.setItemMeta(dyedMeta);
+        ItemMeta meta = item.getItemMeta();
+        if (meta instanceof SkullMeta) {
+            ((SkullMeta) meta).setOwner(skullOwner);
+            item.setItemMeta(meta);
         }
     }
 
-    private static void setUnbreakable(ItemStack item) throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
-        if (Toolkit.versionToNumber() <= 114) {
-            ItemMeta meta = item.getItemMeta();
+    private static void dyeItem(ItemStack item, Color color) {
+        ItemMeta meta = item.getItemMeta();
 
+        if (meta instanceof LeatherArmorMeta) {
+            ((LeatherArmorMeta) meta).setColor(color);
+            item.setItemMeta(meta);
+        }
+    }
+
+    private static void setUnbreakable(ItemStack item) throws InvocationTargetException, IllegalAccessException,
+            NoSuchMethodException {
+        ItemMeta meta = item.getItemMeta();
+
+        if (meta == null) {
+            return;
+        }
+
+        if (Toolkit.versionToNumber() <= 114) {
             Method spigotMethod = meta.getClass().getMethod("spigot");
             spigotMethod.setAccessible(true);
 
             Object spigotInstance = spigotMethod.invoke(meta);
-            Class spigotClass = spigotInstance.getClass();
+            Class<?> spigotClass = spigotInstance.getClass();
 
             Method setUnbreakableMethod = spigotClass.getDeclaredMethod("setUnbreakable", boolean.class);
             setUnbreakableMethod.setAccessible(true);
 
             setUnbreakableMethod.invoke(spigotInstance, true);
-        } else if (Toolkit.versionToNumber() > 114) {
-            item.getItemMeta().setUnbreakable(true);
+        } else {
+            meta.setUnbreakable(true);
         }
+
+        // getItemMeta hands back a copy, so the change only counts once it is put back
+        item.setItemMeta(meta);
     }
 
     private static ItemStack setEffectsFromPath(ItemStack item, Resource resource, String path) {
         String effectsPath = path + ".Effects";
-        String firstChildEffectName = resource.getConfigurationSection(effectsPath).getKeys(false).toArray()[0].toString();
-        String firstChildPath = path + ".Effects." + firstChildEffectName;
-        boolean isCustom = resource.contains(firstChildPath + ".Duration");
+        ConfigurationSection effectsSection = resource.getConfigurationSection(effectsPath);
 
-        if (Toolkit.versionToNumber() == 18 && !isCustom) {
-            return setVanillaEffectsFromPath(item, resource, effectsPath);
+        if (effectsSection == null || effectsSection.getKeys(false).isEmpty()) {
+            return item;
         }
+
+        String firstChildEffectName = effectsSection.getKeys(false).iterator().next();
+        String firstChildPath = effectsPath + "." + firstChildEffectName;
+        boolean isCustom = resource.contains(firstChildPath + ".Duration");
 
         if (isCustom) {
             setCustomEffectsFromPath(item, resource, effectsPath);
-        } else {
-            setVanillaEffectsFromPath(item, resource, effectsPath);
+            return item;
         }
 
-        return item;
+        return setVanillaEffectsFromPath(item, resource, effectsPath);
     }
 
+    @SuppressWarnings("deprecation")
     private static ItemStack setVanillaEffectsFromPath(ItemStack item, Resource resource, String path) {
-        PotionMeta potionMeta = (PotionMeta) item.getItemMeta();
+        ConfigurationSection section = resource.getConfigurationSection(path);
+        if (section == null || section.getKeys(false).isEmpty()) {
+            return item;
+        }
 
-        String firstChildEffectName = resource.getConfigurationSection(path).getKeys(false).toArray()[0].toString();
+        String firstChildEffectName = section.getKeys(false).iterator().next();
         String firstChildPath = path + "." + firstChildEffectName;
 
-        PotionType potionType = XPotion.matchXPotion(firstChildEffectName).get().getPotionType();
+        Optional<XPotion> matchedPotion = XPotion.matchXPotion(firstChildEffectName);
+        PotionType potionType = matchedPotion.map(XPotion::getPotionType).orElse(null);
+
+        if (potionType == null) {
+            Toolkit.warnOnce("potion-effect:" + firstChildEffectName,
+                    "&7[&b&lKIT-PVP&7] &cThere is no potion called [" + firstChildEffectName +
+                    "] on this server version; the item was left as a plain potion.");
+            return item;
+        }
+
         boolean isUpgraded = resource.getBoolean(firstChildPath + ".Upgraded");
         boolean isExtended = resource.getBoolean(firstChildPath + ".Extended");
 
         if (Toolkit.versionToNumber() == 18) {
-            boolean isSplash = resource.fetchString(path.replace("Effects", "") + ".Type").equals("SPLASH_POTION");
+            boolean isSplash = "SPLASH_POTION".equals(
+                    resource.fetchStringOrNull(path.replace("Effects", "") + ".Type"));
             Potion potion = Potion.fromItemStack(item);
             potion.setSplash(isSplash);
             potion.setType(potionType);
@@ -224,38 +265,43 @@ public class AttributeParser {
             if (isExtended) potion.setHasExtendedDuration(true);
 
             return potion.toItemStack(item.getAmount());
-        } else if (Toolkit.versionToNumber() >= 19) {
-            potionMeta.setBasePotionData(new PotionData(potionType, isExtended, isUpgraded));
         }
 
-        item.setItemMeta(potionMeta);
+        ItemMeta meta = item.getItemMeta();
+        if (meta instanceof PotionMeta) {
+            Toolkit.applyBasePotionType((PotionMeta) meta, potionType, isExtended, isUpgraded);
+            item.setItemMeta(meta);
+        }
 
         return item;
     }
 
     private static void setCustomEffectsFromPath(ItemStack item, Resource resource, String path) {
-        PotionMeta potionMeta = (PotionMeta) item.getItemMeta();
+        ItemMeta meta = item.getItemMeta();
 
-        for (String effectName : resource.getConfigurationSection(path).getKeys(false)) {
+        if (!(meta instanceof PotionMeta)) {
+            return;
+        }
+
+        PotionMeta potionMeta = (PotionMeta) meta;
+        ConfigurationSection section = resource.getConfigurationSection(path);
+
+        if (section == null) {
+            return;
+        }
+
+        for (String effectName : section.getKeys(false)) {
             String specificPath = path + "." + effectName;
-            potionMeta.addCustomEffect(new PotionEffect(PotionEffectType.getByName(effectName),
+            potionMeta.addCustomEffect(new PotionEffect(Toolkit.safePotionEffectType(effectName),
                     resource.getInt(specificPath + ".Duration") * 20,
-                    resource.getInt(specificPath + ".Amplifier") - 1), true);
+                    Math.max(0, resource.getInt(specificPath + ".Amplifier") - 1)), true);
         }
 
         item.setItemMeta(potionMeta);
     }
 
     private static int getVanillaLevel(PotionType type, boolean isUpgraded) {
-        switch (type) {
-            case INVISIBILITY: case FIRE_RESISTANCE: case NIGHT_VISION:
-                case SLOWNESS: case WATER_BREATHING: case WEAKNESS:
-                return 1;
-            case INSTANT_DAMAGE: case INSTANT_HEAL: case JUMP: case POISON:
-                case REGEN: case SPEED: case STRENGTH:
-                return isUpgraded ? 2 : 1;
-        }
-        return 1;
+        return isUpgraded && UPGRADEABLE_POTION_NAMES.contains(type.name()) ? 2 : 1;
     }
 
 }

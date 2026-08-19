@@ -98,13 +98,46 @@ public class AttributeWriter {
                 resource.save();
 
             } else if (Toolkit.versionToNumber() >= 19) {
-                PotionData data = meta.getBasePotionData();
+                writeBasePotion(resource, meta, effectPath);
+            }
+        }
+    }
 
+    /**
+     * Records a potion's base type. PotionData carries the extended and upgraded
+     * flags but was removed in 1.21, where the flags are folded into the type name
+     * instead, so the older API is tried first and the newer one used as a fallback.
+     */
+    private static void writeBasePotion(Resource resource, PotionMeta meta, String effectPath) {
+        try {
+            PotionData data = meta.getBasePotionData();
+
+            if (data.getType().getEffectType() != null) {
                 String effectName = data.getType().getEffectType().getName();
                 resource.set(effectPath + "." + effectName + ".Upgraded", data.isUpgraded());
                 resource.set(effectPath + "." + effectName + ".Extended", data.isExtended());
                 resource.save();
             }
+            return;
+        } catch (Throwable ignored) {
+            // 1.21 and newer: read the type directly
+        }
+
+        try {
+            String typeName = meta.getBasePotionType() == null ? null : meta.getBasePotionType().name();
+
+            if (typeName != null) {
+                boolean extended = typeName.startsWith("LONG_");
+                boolean upgraded = typeName.startsWith("STRONG_");
+                String effectName = typeName.replace("LONG_", "").replace("STRONG_", "");
+
+                resource.set(effectPath + "." + effectName + ".Upgraded", upgraded);
+                resource.set(effectPath + "." + effectName + ".Extended", extended);
+                resource.save();
+            }
+        } catch (Throwable ignored) {
+            Toolkit.warnOnce("potion-write",
+                    "&7[&b&lKIT-PVP&7] &cCould not read the potion type of an item while saving a kit.");
         }
     }
 
