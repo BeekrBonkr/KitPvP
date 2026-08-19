@@ -23,7 +23,7 @@ public class SoupListener implements Listener {
 		this.plugin = plugin;
 		this.config = plugin.getResources().getConfig();
 	}
-	
+
 	@EventHandler
 	public void onPlayerDeath(PlayerDeathEvent e) {
 		Player victim = e.getEntity();
@@ -31,7 +31,7 @@ public class SoupListener implements Listener {
 		if (!Toolkit.inArena(victim)) {
 			return;
 		}
-			
+
 		if (victim.getKiller() != null && config.getBoolean("Kill.SoupReward.Enabled")) {
 			Player killer = victim.getKiller();
 
@@ -46,7 +46,7 @@ public class SoupListener implements Listener {
 						insertSoupRewardToInventory(killer);
 					}
 				}
-			}.runTaskLater(plugin, config.getInt("Kill.SoupReward.Delay") * 20L);
+			}.runTaskLater(plugin, Math.max(0, config.getInt("Kill.SoupReward.Delay")) * 20L);
 		}
 	}
 
@@ -83,7 +83,7 @@ public class SoupListener implements Listener {
 		}
 		return -1;
 	}
-	
+
 	@EventHandler
 	public void onSoupUse(PlayerInteractEvent e) {
 		if (!config.getBoolean("Soups.Enabled")) {
@@ -97,14 +97,18 @@ public class SoupListener implements Listener {
 			if (Toolkit.hasMatchingMaterial(Toolkit.getHandItemForInteraction(e), "MUSHROOM_STEW")) {
 				e.setCancelled(true);
 
-				if (p.getHealth() < 20.0) {
-					int soupBoost = plugin.getConfig().getInt("Soups.RegenAmount");
+				// a kit that sets Kit.Health above 20 can be healed all the way up;
+				// the cap used to be hardcoded at 20 hearts' worth
+				double maxHealth = Toolkit.getMaxHealth(p);
 
-					p.setHealth(Math.min(p.getHealth() + (double) soupBoost, 20.0));
+				if (p.getHealth() < maxHealth) {
+					int soupBoost = config.getInt("Soups.RegenAmount");
+
+					p.setHealth(Math.min(p.getHealth() + soupBoost, maxHealth));
 
 					Toolkit.playSoundToPlayer(p, config.fetchString("Soups.Sound"),
 							config.getInt("Soups.Pitch"));
-					Toolkit.setHandItemForInteraction(e,config.getBoolean("Soups.RemoveAfterUse") ?
+					Toolkit.setHandItemForInteraction(e, config.getBoolean("Soups.RemoveAfterUse") ?
 							Toolkit.safeItemStack("AIR") : Toolkit.safeItemStack("BOWL"));
 				}
 			}
@@ -115,11 +119,13 @@ public class SoupListener implements Listener {
 		ItemStack soup = Toolkit.safeItemStack("MUSHROOM_STEW");
 		ItemMeta soupMeta = soup.getItemMeta();
 
-		soupMeta.setDisplayName(config.fetchString("Soups.Name"));
-		soupMeta.setLore(config.getStringList("Soups.Lore"));
+		if (soupMeta != null) {
+			soupMeta.setDisplayName(config.fetchString("Soups.Name"));
+			soupMeta.setLore(config.getStringList("Soups.Lore"));
+			soup.setItemMeta(soupMeta);
+		}
 
-		soup.setItemMeta(soupMeta);
 		return soup;
 	}
-	
+
 }

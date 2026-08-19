@@ -16,12 +16,12 @@ public class AbilityListener implements Listener {
 
 	private final Arena arena;
 	private final Resources resources;
-	
+
 	public AbilityListener(Game plugin) {
 		this.arena = plugin.getArena();
 		this.resources = plugin.getResources();
 	}
-	
+
 	@EventHandler
 	public void onAbility(PlayerAbilityEvent e) {
 		Player p = e.getPlayer();
@@ -32,10 +32,10 @@ public class AbilityListener implements Listener {
 
 		Ability ability = e.getAbility();
 
-		String abilityPermission = "kp.ability." + ability.getName().toLowerCase();
-		if (!p.hasPermission(abilityPermission)) {
+		// an ability that arrived with the player's kit needs no separate permission
+		if (!arena.getAbilities().hasAbilityPermission(p, ability.getName())) {
 			p.sendMessage(resources.getMessages().fetchString("Messages.General.Permission")
-					.replace("%permission%", abilityPermission));
+					.replace("%permission%", arena.getAbilities().getPermissionNode(ability.getName())));
 			return;
 		}
 
@@ -50,7 +50,9 @@ public class AbilityListener implements Listener {
 			p.sendMessage(Toolkit.translate(ability.getMessage()));
 
 		if (ability.getSound() != null)
-			p.playSound(p.getLocation(), ability.getSound(), ability.getSoundVolume(), ability.getSoundPitch());
+			p.playSound(p.getLocation(), ability.getSound(),
+					Math.max(0.0f, ability.getSoundVolume()),
+					Math.max(0.5f, Math.min(2.0f, ability.getSoundPitch() <= 0 ? 1.0f : ability.getSoundPitch())));
 
 		if (ability.getEffects().size() > 0)
 			ability.getEffects().forEach(p::addPotionEffect);
@@ -59,8 +61,9 @@ public class AbilityListener implements Listener {
 			Toolkit.runCommands(p, ability.getCommands(), "none", "none");
 
 		if (ability.getCooldown() == null) {
+			// abilities without a cooldown are paid for with the item itself
 			ItemStack abilityItem = Toolkit.getHandItemForInteraction(e.getOriginalInteractionEvent());
-			abilityItem.setAmount(abilityItem.getAmount() - 1);
+			Toolkit.consumeOneHandItem(e.getOriginalInteractionEvent(), abilityItem);
 		} else {
 			arena.getCooldowns().setAbilityCooldown(p.getName(), ability.getName());
 		}

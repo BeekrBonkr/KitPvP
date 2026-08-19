@@ -1,8 +1,6 @@
 package com.planetgallium.kitpvp.listener;
 
-import com.cryptomorin.xseries.XMaterial;
 import com.planetgallium.kitpvp.util.Resource;
-import org.bukkit.Material;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -24,14 +22,14 @@ public class ArrowListener implements Listener {
 		this.config = plugin.getResources().getConfig();
 	}
 
-	@EventHandler
+	@EventHandler(ignoreCancelled = true)
 	public void onArrowHit(EntityDamageByEntityEvent e) {
 		if (Toolkit.inArena(e.getEntity()) &&
 				e.getEntity() instanceof Player && e.getDamager() instanceof Arrow) {
 			Player damagedPlayer = (Player) e.getEntity();
 			Arrow arrow = (Arrow) e.getDamager();
 
-			if (arrow.getShooter() != null && arrow.getShooter() instanceof Player) {
+			if (arrow.getShooter() instanceof Player) {
 				Player shooter = (Player) arrow.getShooter();
 
 				// make sure damaged player isn't shooter (self-hit)
@@ -44,53 +42,55 @@ public class ArrowListener implements Listener {
 	}
 
 	private void doArrowHitMessageIfEnabled(Player shooter, Player damagedPlayer) {
-		if (config.getBoolean("Combat.ArrowHit.Enabled")) {
-			new BukkitRunnable() {
-				@Override
-				public void run() {
-					double health = Math.round(damagedPlayer.getHealth() * 10.0) / 10.0;
-
-					if (shooter.hasPermission("kp.arrowmessage")) {
-						if (health != 20.0) {
-							shooter.sendMessage(config.fetchString("Combat.ArrowHit.Message").replace("%player%", damagedPlayer.getName()).replace("%health%", String.valueOf(health)));
-						}
-					}
-				}
-			}.runTaskLater(plugin, 2L);
+		if (!config.getBoolean("Combat.ArrowHit.Enabled") || !shooter.hasPermission("kp.arrowmessage")) {
+			return;
 		}
+
+		// a tick later, so the reported health is the health after the arrow landed
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				if (!shooter.isOnline() || !damagedPlayer.isOnline()) {
+					return;
+				}
+
+				double health = Toolkit.round(damagedPlayer.getHealth(), 1);
+
+				shooter.sendMessage(config.fetchString("Combat.ArrowHit.Message")
+						.replace("%player%", damagedPlayer.getName())
+						.replace("%health%", String.valueOf(health))
+						.replace("%max_health%", String.valueOf(Toolkit.round(Toolkit.getMaxHealth(damagedPlayer), 1))));
+			}
+		}.runTaskLater(plugin, 2L);
 	}
 
 	private void doArrowReturnIfEnabled(Player shooter, Player damagedPlayer) {
-		if (config.getBoolean("Combat.ArrowReturn.Enabled")) {
+		if (!config.getBoolean("Combat.ArrowReturn.Enabled") || !shooter.hasPermission("kp.arrowreturn")) {
+			return;
+		}
 
-			// Do not do arrow return if damagedPlayer does not have a kit (if NoKitProtection is enabled)
-			if (config.getBoolean("Arena.NoKitProtection")) {
-				if (!plugin.getArena().getKits().playerHasKit(damagedPlayer.getName())) {
-					return;
-				}
-			}
+		int count = Math.max(1, config.getInt("Combat.ArrowReturn.Count"));
+		ItemStack arrowToAdd = Toolkit.safeItemStack("ARROW");
+		arrowToAdd.setAmount(count);
 
-			ItemStack arrowToAdd = new ItemStack(Material.ARROW, config.getInt("Combat.ArrowReturn.Count"));
-
-			for (ItemStack items : shooter.getInventory().getContents()) {
-				if (items != null && items.getType() == XMaterial.ARROW.parseMaterial() && items.getAmount() < 64) {
-
-					if (shooter.hasPermission("kp.arrowreturn")) {
-						shooter.getInventory().addItem(arrowToAdd);
-						return;
-					}
-				}
-			}
-
-			// keep a slot empty for each kit trident currently out of the inventory
-			int reservedSlotCount = Toolkit.countMissingKitTridents(
-					plugin.getArena().getKits().getKitOfPlayer(shooter.getName()), shooter);
-
-			if (Toolkit.countEmptyMainSlots(shooter) <= reservedSlotCount) {
-				shooter.sendMessage(config.fetchString("Combat.ArrowReturn.NoSpace"));
-			} else {
+		// an existing part-full stack has room without needing a free slot
+		for (int i = 0; i < 36; i++) {
+			ItemStack item = shooter.getInventory().getItem(i);
+			if (item != null && item.getType() == arrowToAdd.getType() &&
+					item.getAmount() + count <= item.getType().getMaxStackSize()) {
 				shooter.getInventory().addItem(arrowToAdd);
+				return;
 			}
+		}
+
+		// keep a slot empty for each kit trident currently out of the inventory
+		int reservedSlotCount = Toolkit.countMissingKitTridents(
+				plugin.getArena().getKits().getKitOfPlayer(shooter.getName()), shooter);
+
+		if (Toolkit.countEmptyMainSlots(shooter) <= reservedSlotCount) {
+			shooter.sendMessage(config.fetchString("Combat.ArrowReturn.NoSpace"));
+		} else {
+			shooter.getInventory().addItem(arrowToAdd);
 		}
 	}
 

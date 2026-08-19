@@ -1,5 +1,6 @@
 package com.planetgallium.kitpvp.listener;
 
+import com.planetgallium.kitpvp.util.CacheManager;
 import com.planetgallium.kitpvp.util.Resource;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -16,7 +17,7 @@ public class JoinListener implements Listener {
 	private final Game plugin;
 	private final Arena arena;
 	private final Resource config;
-	
+
 	public JoinListener(Game plugin) {
 		this.plugin = plugin;
 		this.arena = plugin.getArena();
@@ -28,44 +29,48 @@ public class JoinListener implements Listener {
 		Player p = e.getPlayer();
 
 		// Update checker
-		if (plugin.needsUpdate()) {
-			if (p.isOp()) {
-				p.sendMessage(Toolkit.translate("&7[&b&lKIT-PVP&7] &aAn update was found: v" +
-						plugin.getUpdateVersion() + " https://www.spigotmc.org/resources/27107/"));
-			}
+		if (plugin.needsUpdate() && p.hasPermission("kp.updatenotify")) {
+			p.sendMessage(Toolkit.translate("&7[&b&lKIT-PVP&7] &aAn update was found: v" +
+					plugin.getUpdateVersion() + " https://www.spigotmc.org/resources/27107/"));
 		}
 
 		arena.getStats().createPlayer(p);
 
-		if (p.getName().equals("cervinakuy")) {
-			e.setJoinMessage(Toolkit.translate("&7[&b&lKIT-PVP&7] &7The Developer of &bKitPvP" +
-					" &7has joined the server."));
-		}
-
 		if (Toolkit.inArena(p)) {
-			if (config.getBoolean("Arena.ClearInventoryOnJoin")) {
-				p.getInventory().clear();
-				p.getInventory().setArmorContents(null);
-			}
-
-			arena.addPlayer(p, config.getBoolean("Arena.ToSpawnOnJoin"),
-					config.getBoolean("Arena.GiveItemsOnJoin"));
+			enterArena(p);
 		}
 	}
-	
+
+	/**
+	 * One handler for world changes, rather than one here adding the player and
+	 * another elsewhere removing them again a moment later.
+	 */
 	@EventHandler
 	public void onWorldChange(PlayerChangedWorldEvent e) {
 		Player p = e.getPlayer();
 
-		if (Toolkit.inArena(p)) {
-			if (config.getBoolean("Arena.ClearInventoryOnJoin")) {
+		boolean cameFromArena = Toolkit.inArena(e.getFrom());
+		boolean nowInArena = Toolkit.inArena(p);
+
+		if (nowInArena) {
+			enterArena(p); // covers entering an arena and moving straight between two
+		} else if (cameFromArena) {
+			if (config.getBoolean("Arena.ClearInventoryOnLeave")) {
 				p.getInventory().clear();
 				p.getInventory().setArmorContents(null);
 			}
-			
-			arena.addPlayer(p, config.getBoolean("Arena.ToSpawnOnJoin"),
-					config.getBoolean("Arena.GiveItemsOnJoin"));
+			arena.removePlayer(p);
 		}
 	}
-	
+
+	private void enterArena(Player p) {
+		if (config.getBoolean("Arena.ClearInventoryOnJoin")) {
+			p.getInventory().clear();
+			p.getInventory().setArmorContents(null);
+		}
+
+		arena.addPlayer(p, config.getBoolean("Arena.ToSpawnOnJoin"),
+				config.getBoolean("Arena.GiveItemsOnJoin"));
+	}
+
 }

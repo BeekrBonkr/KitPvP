@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
@@ -19,6 +20,9 @@ import java.util.Arrays;
 import java.util.List;
 
 public class SignListener implements Listener {
+
+	/** Only the first three lines are used, on creation and when matching. */
+	private static final int MATCHED_LINES = 3;
 
 	private final Arena arena;
 	private final Resource messages;
@@ -33,25 +37,57 @@ public class SignListener implements Listener {
 		this.regularSignTypes = new ArrayList<>(Arrays.asList("clear", "menu", "stats", "refill"));
 		this.customSignTypes = new ArrayList<>(Arrays.asList("kit", "arena"));
 	}
-	
+
 	@EventHandler
 	public void onSignChange(SignChangeEvent e) {
-		if (e.getLine(0) != null && e.getLine(0).equalsIgnoreCase("[KitPvP]")) {
-			Player p = e.getPlayer();
-			String signType = e.getLine(1);
+		if (e.getLine(0) == null || !e.getLine(0).equalsIgnoreCase("[KitPvP]")) {
+			return;
+		}
 
-			if (regularSignTypes.contains(signType)) {
-				renameSign(e, "Signs." + Toolkit.capitalizeFirstChar(signType), null, null);
-				p.sendMessage(messages.fetchString("Messages.Other.Sign"));
-			} else if (customSignTypes.contains(signType)) {
-				String placeholderKey = "%" + signType + "%";
-				String placeholderValue = e.getLine(2);
-				renameSign(e, "Signs." + Toolkit.capitalizeFirstChar(signType), placeholderKey, placeholderValue);
-				p.sendMessage(messages.fetchString("Messages.Other.Sign"));
-			}
+		Player p = e.getPlayer();
+		String signType = e.getLine(1) == null ? "" : e.getLine(1).toLowerCase();
+
+		if (!regularSignTypes.contains(signType) && !customSignTypes.contains(signType)) {
+			return;
+		}
+
+		// creating a working kit or arena sign is an administrative action, not
+		// something anyone who can place a sign should be able to do
+		if (!p.hasPermission("kp.sign.create")) {
+			p.sendMessage(messages.fetchString("Messages.General.Permission")
+					.replace("%permission%", "kp.sign.create"));
+			e.setLine(0, "");
+			return;
+		}
+
+		if (regularSignTypes.contains(signType)) {
+			renameSign(e, "Signs." + Toolkit.capitalizeFirstChar(signType), null, null);
+		} else {
+			String placeholderKey = "%" + signType + "%";
+			String placeholderValue = e.getLine(2);
+			renameSign(e, "Signs." + Toolkit.capitalizeFirstChar(signType), placeholderKey, placeholderValue);
+		}
+
+		p.sendMessage(messages.fetchString("Messages.Other.Sign"));
+	}
+
+	/** A plugin sign can only be broken by someone who could have created it. */
+	@EventHandler
+	public void onSignBreak(BlockBreakEvent e) {
+		if (e.isCancelled() || !(e.getBlock().getState() instanceof Sign)) {
+			return;
+		}
+
+		Sign sign = (Sign) e.getBlock().getState();
+		SignMatch match = findMatchingSignType(sign);
+
+		if (match != null && !e.getPlayer().hasPermission("kp.sign.create")) {
+			e.setCancelled(true);
+			e.getPlayer().sendMessage(messages.fetchString("Messages.General.Permission")
+					.replace("%permission%", "kp.sign.create"));
 		}
 	}
-	
+
 	@EventHandler
 	public void onSignUse(PlayerInteractEvent e) {
 		// Logic behind this specific sign feature implementation: to avoid storing signs, most signs will
@@ -59,50 +95,84 @@ public class SignListener implements Listener {
 		// that is different (for instance a specified kit name, or arena name).
 		// If there isn't a 100% match, a search for that one word delta will be started and subsequently used if found.
 
-		if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
-			if (e.getClickedBlock() != null && e.getClickedBlock().getState() instanceof Sign) {
-				ConfigurationSection signsSection = signs.getConfigurationSection("Signs");
-				Sign sign = (Sign) e.getClickedBlock().getState();
-				Player p = e.getPlayer();
+		if (e.getAction() != Action.RIGHT_CLICK_BLOCK || e.getClickedBlock() == null ||
+				!(e.getClickedBlock().getState() instanceof Sign)) {
+			return;
+		}
 
-				for (String signType : signsSection.getKeys(false)) {
-					if (signType.equals("Locations")) break;
+		Sign sign = (Sign) e.getClickedBlock().getState();
+		SignMatch match = findMatchingSignType(sign);
 
-					List<String[]> mismatchedLines = new ArrayList<>();
+		if (match != null) {
+			executeSign(e.getPlayer(), match.signType, match.wordDelta);
+			e.setCancelled(true); // prevents sign editing on 1.20+
+		}
+	}
 
-					for (int i = 0; i < 3; i++) {
-						String signLine = sign.getLine(i);
-						String configSignLine = signs.fetchString("Signs." + signType + ".Line-" + (i + 1));
+	/** The configured sign type this sign matches, or null if it is just a sign. */
+	private SignMatch findMatchingSignType(Sign sign) {
+		ConfigurationSection signsSection = signs.getConfigurationSection("Signs");
 
-						if (!signLine.equals(configSignLine)) {
-							mismatchedLines.add(new String[]{configSignLine, signLine});
-						}
-					}
+		if (signsSection == null) {
+			return null;
+		}
 
-					if (mismatchedLines.size() == 0) { // exact match
-						executeSign(p, signType, null);
-						e.setCancelled(true); // prevents sign editing on 1.20+
-						break;
-					} else if (mismatchedLines.size() == 1) { // one line (line with kit name or arena name) doesn't match
-						executeSign(p, signType, getWordDelta(mismatchedLines));
-						e.setCancelled(true); // prevents sign editing on 1.20+
-						break;
-					}
+		for (String signType : signsSection.getKeys(false)) {
+			if (signType.equals("Locations")) {
+				continue;
+			}
+
+			List<String[]> mismatchedLines = new ArrayList<>();
+
+			for (int i = 0; i < MATCHED_LINES; i++) {
+				String signLine = sign.getLine(i);
+				String configSignLine = signs.fetchStringOrNull("Signs." + signType + ".Line-" + (i + 1));
+
+				if (configSignLine == null) {
+					continue;
+				}
+				configSignLine = ChatColor.translateAlternateColorCodes('&', configSignLine);
+
+				if (!signLine.equals(configSignLine)) {
+					mismatchedLines.add(new String[]{configSignLine, signLine});
+				}
+			}
+
+			if (mismatchedLines.isEmpty()) {
+				return new SignMatch(signType, null);
+			}
+
+			if (mismatchedLines.size() == 1) {
+				String wordDelta = getWordDelta(mismatchedLines);
+				if (wordDelta != null) {
+					return new SignMatch(signType, wordDelta);
 				}
 			}
 		}
+
+		return null;
 	}
-	
+
 	private void renameSign(SignChangeEvent e, String path, String placeholder, String placeholderValue) {
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < MATCHED_LINES; i++) {
 			String line = signs.fetchString(path + ".Line-" + (i + 1));
 
 			if (placeholder != null && placeholderValue != null)
 				line = line.replace(placeholder, placeholderValue);
 			e.setLine(i, line);
 		}
+
+		String fourthLine = signs.fetchStringOrNull(path + ".Line-4");
+		if (fourthLine != null) {
+			e.setLine(3, ChatColor.translateAlternateColorCodes('&', fourthLine));
+		}
 	}
 
+	/**
+	 * The single word that differs between the configured line and the sign — the
+	 * kit or arena name. Null when the lines differ by more than one word, by none
+	 * at all (colour codes only), or when the sign is shorter than the template.
+	 */
 	private String getWordDelta(List<String[]> mismatchedLines) {
 		List<String> wordDelta = new ArrayList<>();
 
@@ -112,17 +182,17 @@ public class SignListener implements Listener {
 		String[] rawSignLineWords = rawSignLine.split(" ");
 		String[] rawConfigSignLineWords = rawConfigSignLine.split(" ");
 
-		for (int i = 0; i < rawConfigSignLineWords.length; i++) {
-			String rawConfigSignWord = rawConfigSignLineWords[i];
-			String rawSignLineWord = rawSignLineWords[i];
+		if (rawSignLineWords.length != rawConfigSignLineWords.length) {
+			return null;
+		}
 
-			if (!rawConfigSignWord.equals(rawSignLineWord)) {
-				wordDelta.add(rawSignLineWord);
+		for (int i = 0; i < rawConfigSignLineWords.length; i++) {
+			if (!rawConfigSignLineWords[i].equals(rawSignLineWords[i])) {
+				wordDelta.add(rawSignLineWords[i]);
 			}
 		}
 
-		// if too many words differ, sign is not a match, return null
-		return wordDelta.size() > 1 ? null : wordDelta.get(0);
+		return wordDelta.size() == 1 ? wordDelta.get(0) : null;
 	}
 
 	private void executeSign(Player p, String type, String placeholder) {
@@ -134,14 +204,28 @@ public class SignListener implements Listener {
 				p.performCommand("kp " + type);
 				break;
 			case "kit":
-				String kitName = placeholder;
-				p.performCommand("kp kit " + kitName);
+				if (placeholder != null) {
+					p.performCommand("kp kit " + placeholder);
+				}
 				break;
 			case "arena":
-				String arenaName = placeholder;
-				p.performCommand("kp arena " + arenaName);
+				if (placeholder != null) {
+					p.performCommand("kp arena " + placeholder);
+				}
 				break;
 		}
 	}
-	
+
+	private static class SignMatch {
+
+		private final String signType;
+		private final String wordDelta;
+
+		SignMatch(String signType, String wordDelta) {
+			this.signType = signType;
+			this.wordDelta = wordDelta;
+		}
+
+	}
+
 }
