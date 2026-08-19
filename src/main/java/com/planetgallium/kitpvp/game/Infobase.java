@@ -40,16 +40,17 @@ public class Infobase {
 
         // Kit Cooldowns
         for (String kitName : resources.getPluginDirectoryFiles("kits", false)) {
-            if (!kitName.startsWith(".")) { // ignore hidden files
-                addKitCooldownTable(kitName);
-            }
+            addKitCooldownTable(kitName);
         }
     }
 
     private Database setupDatabase(Resource config) {
         Toolkit.printToConsole("&7[&b&lKIT-PVP&7] Establishing database connection...");
 
-        // Set database to MySQL, or in any other case, SQLite
+        // the local database lives beside the config files rather than wherever the
+        // server happened to be started from
+        String localDatabasePath = new File(plugin.getDataFolder(), "storage.db").getPath();
+
         if (config.fetchString("Storage.Type").equalsIgnoreCase("mysql")) {
             String host = config.fetchString("Storage.MySQL.Host");
             int port = config.getInt("Storage.MySQL.Port");
@@ -57,50 +58,48 @@ public class Infobase {
             String username = config.fetchString("Storage.MySQL.Username");
             String password = config.fetchString("Storage.MySQL.Password");
 
-            return new Database(host, port, databaseName, username, password);
+            return new Database(host, port, databaseName, username, password, localDatabasePath);
         } else {
-            return new Database("plugins/KitPvP/storage.db");
+            return new Database(localDatabasePath);
         }
     }
 
     public boolean isPlayerRegistered(String username) {
         String uuid = usernameToUUID(username);
-        return tableContainsUUID("stats", uuid);
+        return uuid != null && tableContainsUUID("stats", uuid);
     }
 
-    public void registerPlayerStats(Player p) {
+    /**
+     * Inserts the player's row, or refreshes the stored username if they have
+     * renamed since last time. Takes plain values rather than a Player so it can
+     * run off the main thread.
+     */
+    public void registerPlayerStats(String uuid, String username, int startingLevel) {
         if (!verifyTableExists("stats")) {
             return;
         }
 
-        Field uuidField = uuidField("uuid", p.getUniqueId().toString());
+        Field uuidField = uuidFieldFromUUID(uuid);
         Record playerRecord = statsTable.getRecord(uuidField);
 
         if (playerRecord == null) {
             Record statsRecord = new Record(
                     uuidField,
-                    new Field("username", DataType.STRING, p.getName(), Infobase.USERNAME_MAX_CHARACTERS),
+                    new Field("username", DataType.STRING, username, Infobase.USERNAME_MAX_CHARACTERS),
                     new Field("kills", DataType.INTEGER, 0),
                     new Field("deaths", DataType.INTEGER, 0),
                     new Field("experience", DataType.INTEGER, 0),
-                    new Field("level", DataType.INTEGER,
-                            resources.getLevels().getInt("Levels.Options.Minimum-Level")));
+                    new Field("level", DataType.INTEGER, startingLevel));
             statsTable.insertRecord(statsRecord);
         } else {
-            // check if stored username needs changing if a player changed their username
             String storedUsername = (String) playerRecord.getFieldValue("username");
-            String currentUsername = p.getName();
 
-            if (!storedUsername.equals(currentUsername)) {
-                Field updatedUsernameField = new Field("username", DataType.STRING, p.getName(),
+            if (storedUsername == null || !storedUsername.equals(username)) {
+                Field updatedUsernameField = new Field("username", DataType.STRING, username,
                         Infobase.USERNAME_MAX_CHARACTERS);
                 statsTable.updateRecord(uuidField, updatedUsernameField);
             }
         }
-
-        // put stats into stats cache
-        playerRecord = statsTable.getRecord(uuidField("uuid", p.getUniqueId().toString()));
-        CacheManager.getStatsCache().put(p.getName(), recordToPlayerData(playerRecord));
     }
 
     public void exportStats() {
@@ -109,10 +108,19 @@ public class Infobase {
 
         ConfigurationSection statsSection = statsResource.getConfigurationSection("Stats.Players");
 
+        if (statsSection == null) {
+            Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cThere is no stats.yml with a Stats.Players section " +
+                    "to import from.");
+            return;
+        }
+
         for (String uuid : statsSection.getKeys(false)) {
             ConfigurationSection playerSection = statsSection.getConfigurationSection(uuid);
+            if (playerSection == null) {
+                continue;
+            }
 
-            Field uuidField = uuidField("uuid", uuid);
+            Field uuidField = uuidFieldFromUUID(uuid);
             Field usernameField = new Field("username", DataType.STRING,
                     playerSection.getString("Username"), Infobase.USERNAME_MAX_CHARACTERS);
             Field killsField = new Field("kills", DataType.INTEGER, playerSection.getInt("Kills"));
@@ -127,13 +135,17 @@ public class Infobase {
             statsTable.updateOrInsertRecord(playerStatsRecord);
         }
 
-        File renamedStatsFile = new File("old_stats.yml");
+        File renamedStatsFile = new File(plugin.getDataFolder(), "old_stats.yml");
         if (!statsResource.getFile().renameTo(renamedStatsFile)) {
             Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cThere was a problem renaming stats.yml to old_stats.yml.");
         }
     }
 
     public String usernameToUUID(String username) {
+        if (username == null) {
+            return null;
+        }
+
         if (CacheManager.getUUIDCache().containsKey(username)) {
             return CacheManager.getUUIDCache().get(username);
         }
@@ -168,7 +180,7 @@ public class Infobase {
     private boolean tableContainsUUID(String tableName, String uuid) {
         if (verifyTableExists(tableName)) {
             Table table = database.getTable(tableName);
-            return table.getRecord(uuidField("uuid", uuid)) != null;
+            return table.getRecord(uuidFieldFromUUID(uuid)) != null;
         }
         return false;
     }
@@ -184,6 +196,12 @@ public class Infobase {
     }
 
     public void addKitCooldownTable(String kitName) {
+        if (!isSafeTableName(kitName)) {
+            Toolkit.printToConsole("&7[&b&lKIT-PVP&7] &cKit name [" + kitName + "] cannot be used as a database " +
+                    "table name; cooldowns for it will not be stored. Use letters, numbers and underscores only.");
+            return;
+        }
+
         database.createTable(kitName + "_cooldowns", new Record(
                         new Field("uuid", DataType.FIXED_STRING, Infobase.UUID_MAX_CHARACTERS),
                         new Field("last_used", DataType.INTEGER)));
@@ -198,9 +216,9 @@ public class Infobase {
     }
 
     public void cleanupUnusedKitCooldownTables() {
-        for (String tableName : database.getTables().keySet()) {
-            if (tableName.contains("_cooldowns")) {
-                String kitName = tableName.split("_cooldowns")[0];
+        for (String tableName : new ArrayList<>(database.getTables().keySet())) {
+            if (tableName.endsWith("_cooldowns")) {
+                String kitName = tableName.substring(0, tableName.length() - "_cooldowns".length());
                 if (!plugin.getArena().getKits().isKit(kitName)) {
                     database.deleteTable(tableName);
                 }
@@ -208,11 +226,28 @@ public class Infobase {
         }
     }
 
+    /** Table names are pasted into DDL, so only plain identifiers are ever accepted. */
+    private boolean isSafeTableName(String name) {
+        if (name == null || name.isEmpty() || name.length() > 48) {
+            return false;
+        }
+        for (char c : name.toCharArray()) {
+            if (!Character.isLetterOrDigit(c) && c != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public void setData(String tableName, String identifier, Object data, DataType type, String username) {
         if (verifyTableExists(tableName)) {
             Table table = database.getTable(tableName);
 
-            Field uuidField = uuidField("username", username);
+            Field uuidField = uuidFieldFromUsername(username);
+            if (uuidField == null) {
+                return;
+            }
+
             Record record = table.getRecord(uuidField);
             Field fieldToUpdate = new Field(identifier, type, data);
 
@@ -224,15 +259,20 @@ public class Infobase {
         }
     }
 
-    public void setStatsData(String username, PlayerData playerData) {
+    /** Writes a player's stats and kit cooldowns. Safe to call off the main thread. */
+    public void setStatsData(String uuid, PlayerData playerData) {
+        if (uuid == null) {
+            return;
+        }
+
         if (verifyTableExists("stats")) {
             Table statsTable = database.getTable("stats");
-            Field uuidField = uuidField("username", username);
+            Field uuidField = uuidFieldFromUUID(uuid);
 
             List<Field> fieldsToUpdate = new ArrayList<>();
             for (String statIdentifier : playerData.getData().keySet()) {
-                Field statField = new Field(statIdentifier, DataType.INTEGER, playerData.getData(statIdentifier));
-                fieldsToUpdate.add(statField);
+                fieldsToUpdate.add(new Field(statIdentifier, DataType.INTEGER,
+                        playerData.getData(statIdentifier)));
             }
 
             // by doing this, it updates a whole stat row with one single SQL statement
@@ -240,20 +280,21 @@ public class Infobase {
         }
 
         // Cooldowns
-        if (playerData.getKitCooldowns().size() > 0) {
-            for (Map.Entry<String, Long> entry : playerData.getKitCooldowns().entrySet()) {
-                String kitNameWithCooldown = entry.getKey();
-                long timeKitLastUsed = entry.getValue();
+        for (Map.Entry<String, Long> entry : playerData.getKitCooldowns().entrySet()) {
+            String kitNameWithCooldown = entry.getKey();
+            long timeKitLastUsed = entry.getValue();
 
-                String kitCooldownTableName = "{kit_name}_cooldowns"
-                                            .replace("{kit_name}", kitNameWithCooldown);
-                if (verifyTableExists(kitCooldownTableName)) {
-                    Table kitCooldownTable = database.getTable(kitCooldownTableName);
-                    Record cooldownRecord = new Record(uuidField("username", username),
-                            new Field("last_used", DataType.INTEGER, timeKitLastUsed));
+            if (timeKitLastUsed <= 0) {
+                continue; // a kit that has never been taken has nothing worth storing
+            }
 
-                    kitCooldownTable.updateOrInsertRecord(cooldownRecord);
-                }
+            String kitCooldownTableName = kitNameWithCooldown + "_cooldowns";
+            if (verifyTableExists(kitCooldownTableName)) {
+                Table kitCooldownTable = database.getTable(kitCooldownTableName);
+                Record cooldownRecord = new Record(uuidFieldFromUUID(uuid),
+                        new Field("last_used", DataType.INTEGER, timeKitLastUsed));
+
+                kitCooldownTable.updateOrInsertRecord(cooldownRecord);
             }
         }
     }
@@ -261,55 +302,62 @@ public class Infobase {
     public Object getData(String tableName, String identifier, String username) {
         if (verifyTableExists(tableName)) {
             Table table = database.getTable(tableName);
-            Record record = table.getRecord(uuidField("username", username));
+            Field uuidField = uuidFieldFromUsername(username);
 
+            if (uuidField == null) {
+                return null;
+            }
+
+            Record record = table.getRecord(uuidField);
             if (record != null) {
                 return record.getFieldValue(identifier);
-            } /*else { // currently commented out because not being in a kit cooldown table prints this
-                System.out.printf("[Database] Failed to get data; database does not contain player %s\n", username);
-            } */
+            }
         }
         return null;
     }
 
     public PlayerData recordToPlayerData(Record playerRecord) {
-        PlayerData playerData = new PlayerData(-1, -1, -1, -1);
-        for (String statIdentifier : playerData.getData().keySet()) {
-            playerData.setData(statIdentifier, (int) playerRecord.getFieldValue(statIdentifier));
+        PlayerData playerData = new PlayerData(0, 0, 0, 0);
+
+        if (playerRecord != null) {
+            for (String statIdentifier : new ArrayList<>(playerData.getData().keySet())) {
+                Object value = playerRecord.getFieldValue(statIdentifier);
+                playerData.setData(statIdentifier, value instanceof Number ? ((Number) value).intValue() : 0);
+            }
         }
         return playerData;
     }
 
-    public PlayerData getStatsData(String username) {
-        PlayerData playerData = new PlayerData(-1, -1, -1, -1);
+    /** Reads a stats row by UUID when one is known, falling back to a username lookup. */
+    public PlayerData getStatsData(String uuid, String username) {
         if (verifyTableExists("stats")) {
             Table statsTable = database.getTable("stats");
 
-            Record playerRecord = statsTable.getRecord(uuidField("username", username));
-            if (playerRecord != null) {
-                return recordToPlayerData(playerRecord);
+            Field uuidField = uuid != null ? uuidFieldFromUUID(uuid) : uuidFieldFromUsername(username);
+            if (uuidField != null) {
+                Record playerRecord = statsTable.getRecord(uuidField);
+                if (playerRecord != null) {
+                    return recordToPlayerData(playerRecord);
+                }
             }
         }
-        return playerData;
+        return new PlayerData(0, 0, 0, 0);
     }
 
     private boolean verifyTableExists(String tableName) {
         if (database.getTable(tableName) != null) {
             return true;
         }
-        System.out.printf("[Database] Failed to perform action; table %s does not exist\n", tableName);
         return false;
     }
 
-    private Field uuidField(String flag, String value) {
-        if (flag.equalsIgnoreCase("username")) {
-            return new Field("uuid", DataType.FIXED_STRING, usernameToUUID(value),
-                    Infobase.UUID_MAX_CHARACTERS);
-        } else if (flag.equalsIgnoreCase("uuid")) {
-            return new Field("uuid", DataType.FIXED_STRING, value,
-                    Infobase.UUID_MAX_CHARACTERS);
-        }
-        return null;
+    private Field uuidFieldFromUsername(String username) {
+        String uuid = usernameToUUID(username);
+        return uuid == null ? null : uuidFieldFromUUID(uuid);
+    }
+
+    private Field uuidFieldFromUUID(String uuid) {
+        return new Field("uuid", DataType.FIXED_STRING, uuid, Infobase.UUID_MAX_CHARACTERS);
     }
 
     private Field usernameField(String value) {

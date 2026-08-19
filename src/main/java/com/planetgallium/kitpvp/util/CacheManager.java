@@ -3,38 +3,41 @@ package com.planetgallium.kitpvp.util;
 import com.planetgallium.kitpvp.api.Kit;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CacheManager {
 
-    private static final Map<String, String> usernameToUUID = new HashMap<>();
-    private static final Map<String, Kit> kitCache = new HashMap<>();
-    private static final Map<String, Menu> previewMenuCache = new HashMap<>();
-    private static final Map<String, Map<String, Long>> abilityCooldowns = new HashMap<>();
-    private static final Map<String, PlayerData> statsCache = new HashMap<>();
-    private static final Set<String> potionSwitcherUsers = new HashSet<>();
+    // Concurrent because the stats cache and UUID cache are read from the database
+    // threads that push stats, while the main thread keeps updating them.
+    private static final Map<String, String> usernameToUUID = new ConcurrentHashMap<>();
+    private static final Map<String, Kit> kitCache = new ConcurrentHashMap<>();
+    private static final Map<String, Map<String, Long>> abilityCooldowns = new ConcurrentHashMap<>();
+    private static final Map<String, PlayerData> statsCache = new ConcurrentHashMap<>();
+    private static final Set<String> potionSwitcherUsers = ConcurrentHashMap.newKeySet();
 
     public static Map<String, String> getUUIDCache() { return usernameToUUID; }
 
     public static Map<String, Kit> getKitCache() { return kitCache; }
-
-    public static Map<String, Menu> getPreviewMenuCache() { return previewMenuCache; }
 
     public static Map<String, PlayerData> getStatsCache() { return statsCache; }
 
     public static Set<String> getPotionSwitcherUsers() { return potionSwitcherUsers; }
 
     public static Map<String, Long> getPlayerAbilityCooldowns(String username) {
-        if (!abilityCooldowns.containsKey(username)) {
-            abilityCooldowns.put(username, new HashMap<>());
-        }
-        return abilityCooldowns.get(username);
+        return abilityCooldowns.computeIfAbsent(username, key -> new ConcurrentHashMap<>());
+    }
+
+    /** Drops cached entries for a player who is no longer online. */
+    public static void forgetPlayer(String username) {
+        usernameToUUID.remove(username);
+        abilityCooldowns.remove(username);
+        potionSwitcherUsers.remove(username);
     }
 
     public static void clearCaches() {
         kitCache.clear();
-        previewMenuCache.clear();
         abilityCooldowns.clear();
-        // stats, usernameToUUID, and cache isn't here as of right now
+        // stats and usernameToUUID survive a reload: they are live player state, not config
     }
 
 }

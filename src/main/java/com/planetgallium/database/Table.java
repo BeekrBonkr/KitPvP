@@ -14,8 +14,8 @@ public class Table {
             "({columns_with_data_types}, PRIMARY KEY ({primary_key}));";
     public final static String DELETE_TABLE_QUERY = "DROP TABLE IF EXISTS {table_name};";
     private final static String INSERT_RECORD_QUERY = "INSERT INTO {table_name} ({columns}) VALUES ({values});";
-    private final static String UPDATE_RECORD_QUERY = "UPDATE {table_name} SET {columns_with_values} " +
-            "WHERE `{primary_key}`='{primary_key_value}';";
+    private final static String UPDATE_RECORD_QUERY = "UPDATE {table_name} SET {columns_with_placeholders} " +
+            "WHERE `{primary_key}`=?;";
     private final static String SEARCH_RECORD_QUERY = "SELECT * FROM {table_name} WHERE {column_to_search_name}=?;";
     private final static String GET_RECORD_QUERY = "SELECT * FROM {table_name} WHERE `{primary_field_name}`=?;";
     private final static String DELETE_RECORD_QUERY = "DELETE FROM {table_name} WHERE `{primary_field_name}`=?;";
@@ -94,12 +94,24 @@ public class Table {
     public void updateRecord(Field keyOfRecordToUpdate, Field ... fields) {
         if (!verifyPrimaryKey(this, keyOfRecordToUpdate)) return;
         if (!containsPrimaryKey(fields)) {
+            if (fields.length == 0) {
+                return;
+            }
+
             String updateQuery = Table.UPDATE_RECORD_QUERY.replace("{table_name}", this.getName())
-                    .replace("{columns_with_values}", formatFieldNamesWithValues(fields))
-                    .replace("{primary_key}", primaryKey.getName())
-                    .replace("{primary_key_value}", keyOfRecordToUpdate.getValue().toString());
+                    .replace("{columns_with_placeholders}", formatFieldNamesWithPlaceholders(fields))
+                    .replace("{primary_key}", primaryKey.getName());
             try (Connection connection = dataSource.getConnection() ;
                  PreparedStatement statement = connection.prepareStatement(updateQuery)) {
+
+                // values are bound rather than pasted into the statement, so a value
+                // containing a quote cannot change what the statement does
+                int parameterIndex = 1;
+                for (Field field : fields) {
+                    setStatementParameterToType(statement, parameterIndex++, field);
+                }
+                setStatementParameterToType(statement, parameterIndex, keyOfRecordToUpdate);
+
                 statement.executeUpdate();
             } catch (SQLException exception) {
                 exception.printStackTrace();
@@ -210,6 +222,8 @@ public class Table {
     }
 
     public List<TopEntry> getTopN(Field sortField, Field returnField, int n) {
+        n = Math.max(1, Math.min(1000, n)); // the limit is built into the statement, so keep it a plain number
+
         String topNQuery = Table.TOP_N_RECORD_QUERY.replace("{table_name}", this.getName())
                 .replace("{return_column_name}", returnField.getName())
                 .replace("{sort_column_name}", sortField.getName())
@@ -255,22 +269,13 @@ public class Table {
     }
 
     /**
-     * Converts fields with values (ex: kills=16, experience=85, etc) to one string
-     * "kills=16 experience=85"
-     * to be used in SQL statements
+     * Converts fields to the assignment list of an UPDATE, with the values left as
+     * bind parameters: "kills=?, experience=?".
      */
-    private String formatFieldNamesWithValues(Field ... fields) {
+    private String formatFieldNamesWithPlaceholders(Field ... fields) {
         StringBuilder result = new StringBuilder();
         for (Field field : fields) {
-            String valueStr;
-
-            if (field.getDataType() == DataType.STRING) {
-                valueStr = "'" + field.getValue().toString().replace("'", "''") + "'";
-            } else {
-                valueStr = field.getValue().toString();
-            }
-
-            result.append(", ").append(field.getName()).append("=").append(valueStr);
+            result.append(", ").append(field.getName()).append("=?");
         }
         return result.length() > 0 ? result.substring(2) : result.toString();
     }

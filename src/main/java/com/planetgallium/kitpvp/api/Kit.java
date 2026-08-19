@@ -4,7 +4,6 @@ import com.planetgallium.kitpvp.item.AttributeWriter;
 import com.planetgallium.kitpvp.util.Cooldown;
 import com.planetgallium.kitpvp.util.Resource;
 import com.planetgallium.kitpvp.util.Toolkit;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
@@ -23,7 +22,7 @@ public class Kit {
     private String permission;
     private Cooldown cooldown;
     private int level;
-    private int maxHealth;
+    private int maxHealth = 20;
     private String minimumVersion;
     private String unsupportedMaterial;
 
@@ -74,8 +73,12 @@ public class Kit {
      * Kit.MinimumVersion requirement (always true when none is set).
      */
     public boolean meetsVersionRequirement() {
-        return minimumVersion == null ||
-                Toolkit.versionToNumber() >= Toolkit.versionStringToNumber(minimumVersion);
+        if (minimumVersion == null) {
+            return true;
+        }
+
+        int required = Toolkit.versionStringToNumber(minimumVersion);
+        return required == -1 || Toolkit.versionToNumber() >= required;
     }
 
     public void setOption(String key, Object value) {
@@ -84,13 +87,24 @@ public class Kit {
         this.options.put(key, value);
     }
 
+    /** Options are optional: a kit built through the API and applied directly still works. */
+    private boolean booleanOption(String key, boolean fallback) {
+        Object value = options.get(key);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private String stringOption(String key, String fallback) {
+        Object value = options.get(key);
+        return value instanceof String ? (String) value : fallback;
+    }
+
     public void setInventoryItem(int slot, ItemStack item) {
         inventory.put(slot, item);
     }
 
     public void addEffect(PotionEffectType type, int amplifierNonZeroBased, int durationSeconds) {
         PotionEffect effect = new PotionEffect(type, Toolkit.parsePotionEffectDuration(durationSeconds),
-                amplifierNonZeroBased - 1);
+                Math.max(0, amplifierNonZeroBased - 1));
         effects.add(effect);
     }
 
@@ -118,61 +132,51 @@ public class Kit {
         this.fill = fill;
     }
 
+    /**
+     * Gives the kit to the player. The kit always wins the slot it wants; anything
+     * of the player's that it displaces becomes an overflow item, which is placed
+     * in a free slot, then dropped or discarded depending on the configuration.
+     */
     public void apply(Player player) {
         List<ItemStack> overflowItems = new ArrayList<>();
-        boolean addOverflowItems = (Boolean) options.get("AddOverflowItemsOnKit");
+        boolean addOverflowItems = booleanOption("AddOverflowItemsOnKit", false);
 
         PlayerInventory inv = player.getInventory();
 
         if (kitHelmet != null) {
-            ItemStack current = inv.getHelmet();
-            if (addOverflowItems && !Toolkit.isEmpty(current)) {
-                overflowItems.add(current);
-            }
+            collectOverflow(overflowItems, inv.getHelmet(), addOverflowItems);
             inv.setHelmet(kitHelmet);
         }
 
         if (kitChestplate != null) {
-            ItemStack current = inv.getChestplate();
-            if (addOverflowItems && !Toolkit.isEmpty(current)) {
-                overflowItems.add(current);
-            }
+            collectOverflow(overflowItems, inv.getChestplate(), addOverflowItems);
             inv.setChestplate(kitChestplate);
         }
 
         if (kitLeggings != null) {
-            ItemStack current = inv.getLeggings();
-            if (addOverflowItems && !Toolkit.isEmpty(current)) {
-                overflowItems.add(current);
-            }
+            collectOverflow(overflowItems, inv.getLeggings(), addOverflowItems);
             inv.setLeggings(kitLeggings);
         }
 
         if (kitBoots != null) {
-            ItemStack current = inv.getBoots();
-            if (addOverflowItems && !Toolkit.isEmpty(current)) {
-                overflowItems.add(current);
-            }
+            collectOverflow(overflowItems, inv.getBoots(), addOverflowItems);
             inv.setBoots(kitBoots);
         }
 
         Toolkit.setMaxHealth(player, maxHealth);
 
         for (int i = 0; i < 36; i++) {
-            if (addOverflowItems) {
-                if (inventory.containsKey(i) && !Toolkit.isEmpty(inv.getItem(i))) {
-                    overflowItems.add(inventory.get(i));
-                    continue;
-                }
+            ItemStack kitItem = inventory.get(i);
+            if (kitItem == null) {
+                continue;
             }
 
-            ItemStack kitItem = inventory.get(i);
-            if (kitItem != null) {
-                inv.setItem(i, kitItem);
-            }
+            collectOverflow(overflowItems, inv.getItem(i), addOverflowItems);
+            inv.setItem(i, kitItem);
         }
 
         if (offhand != null && Toolkit.versionToNumber() >= 19) {
+            collectOverflow(overflowItems, inv.getItemInOffHand(), addOverflowItems);
             inv.setItemInOffHand(offhand);
         }
 
@@ -190,8 +194,14 @@ public class Kit {
 
         // last: make absolutely sure kit armor is equipped (and not left in inventory)
         forceEquipArmor(player);
-        
+
         effects.forEach(player::addPotionEffect);
+    }
+
+    private void collectOverflow(List<ItemStack> overflowItems, ItemStack displaced, boolean addOverflowItems) {
+        if (addOverflowItems && !Toolkit.isEmpty(displaced)) {
+            overflowItems.add(displaced.clone());
+        }
     }
 
     private void forceEquipArmor(Player player) {
@@ -202,19 +212,19 @@ public class Kit {
         ItemStack legs = getLeggings();
         ItemStack boots = getBoots();
 
-        if (helmet != null && !helmet.getType().isAir()) {
+        if (!Toolkit.isEmpty(helmet)) {
             inv.setHelmet(helmet);
             removeFirstMatching(inv, helmet);
         }
-        if (chest != null && !chest.getType().isAir()) {
+        if (!Toolkit.isEmpty(chest)) {
             inv.setChestplate(chest);
             removeFirstMatching(inv, chest);
         }
-        if (legs != null && !legs.getType().isAir()) {
+        if (!Toolkit.isEmpty(legs)) {
             inv.setLeggings(legs);
             removeFirstMatching(inv, legs);
         }
-        if (boots != null && !boots.getType().isAir()) {
+        if (!Toolkit.isEmpty(boots)) {
             inv.setBoots(boots);
             removeFirstMatching(inv, boots);
         }
@@ -243,28 +253,31 @@ public class Kit {
     }
 
     private void giveOverflowItems(Player p, List<ItemStack> overflowItems) {
-        for (int i = 0; i < 36; i++) {
-            if (Toolkit.isEmpty(p.getInventory().getItem(i))) { // if empty slot found
-                if (overflowItems.size() >= 1) {
-                    p.getInventory().setItem(i, overflowItems.get(0));
-                    overflowItems.remove(0);
-                } else {
-                    return; // if no overflow items left, return out of function
-                }
+        for (int i = 0; i < 36 && !overflowItems.isEmpty(); i++) {
+            if (Toolkit.isEmpty(p.getInventory().getItem(i))) {
+                p.getInventory().setItem(i, overflowItems.remove(0));
             }
         }
 
-        boolean dropRemainingOverflowItems = (Boolean) options.get("DropRemainingOverflowItemsOnKit");
+        if (overflowItems.isEmpty()) {
+            return;
+        }
 
-        if (dropRemainingOverflowItems) {
+        int remaining = overflowItems.size();
+
+        if (booleanOption("DropRemainingOverflowItemsOnKit", false)) {
             for (ItemStack remainingOverflowItem : overflowItems) {
                 p.getWorld().dropItem(p.getLocation(), remainingOverflowItem);
             }
-            String overflowItemsDropMessage = (String) options.get("Message-OverflowItemsDropped");
-            p.sendMessage(overflowItemsDropMessage.replace("%number%", String.valueOf(overflowItems.size())));
+            String message = stringOption("Message-OverflowItemsDropped", "");
+            if (!message.isEmpty()) {
+                p.sendMessage(message.replace("%number%", String.valueOf(remaining)));
+            }
         } else {
-            String overflowItemsLostMessage = (String) options.get("Message-OverflowItemsLost");
-            p.sendMessage(overflowItemsLostMessage.replace("%number%", String.valueOf(overflowItems.size())));
+            String message = stringOption("Message-OverflowItemsLost", "");
+            if (!message.isEmpty()) {
+                p.sendMessage(message.replace("%number%", String.valueOf(remaining)));
+            }
         }
     }
 
@@ -322,6 +335,8 @@ public class Kit {
     public ItemStack getLeggings() { return kitLeggings; }
 
     public ItemStack getBoots() { return kitBoots; }
+
+    public ItemStack getOffhand() { return offhand; }
 
     public ItemStack getFill() { return fill; }
 

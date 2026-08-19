@@ -14,14 +14,25 @@ import java.util.Map;
 public class Database {
 
     private DataSource dataSource;
+    private boolean usingSQLite;
+    private String fallbackSQLitePath = "storage.db";
     private final Map<String, Table> tables;
 
     public Database(String localDatabaseFileName) {
         this("none", -1, localDatabaseFileName, "none", "none");
     }
 
+    /** True when the connection in use is the local SQLite file rather than MySQL. */
+    public boolean isUsingSQLite() { return usingSQLite; }
+
     public Database(String host, int port, String database, String username, String password) {
+        this(host, port, database, username, password, "storage.db");
+    }
+
+    public Database(String host, int port, String database, String username, String password,
+                    String fallbackSQLitePath) {
         this.tables = new HashMap<>();
+        this.fallbackSQLitePath = fallbackSQLitePath;
 
         if (!host.equals("none")) {
             setupMySQL(host, port, database, username, password);
@@ -41,20 +52,29 @@ public class Database {
             dataSource.setPassword(password);
 
             this.dataSource = dataSource;
+            this.usingSQLite = false;
 
             testDatabaseConnection();
         } catch (SQLException exception) {
-            exception.printStackTrace();
-            System.out.println("[Database] Connection to MySQL database failed. Using SQLite instead...");
-            setupSQLite("storage.db");
+            System.out.println("[Database] Connection to MySQL database failed (" + exception.getMessage() +
+                    "). Falling back to the local SQLite file.");
+            // the same file the plugin would have used had SQLite been configured,
+            // so a temporary MySQL outage does not start a second stats database
+            setupSQLite(fallbackSQLitePath);
         }
     }
 
     private void setupSQLite(String databaseFileName) {
+        java.io.File databaseFile = new java.io.File(databaseFileName);
+        if (databaseFile.getParentFile() != null) {
+            databaseFile.getParentFile().mkdirs();
+        }
+
         SQLiteDataSource sqLiteDataSource = new SQLiteDataSource();
-        sqLiteDataSource.setUrl("jdbc:sqlite:" + databaseFileName);
+        sqLiteDataSource.setUrl("jdbc:sqlite:" + databaseFile.getPath());
 
         this.dataSource = sqLiteDataSource;
+        this.usingSQLite = true;
     }
 
     private void testDatabaseConnection() throws SQLException {
@@ -85,7 +105,11 @@ public class Database {
             statement.executeUpdate();
         } catch (SQLException exception) {
             exception.printStackTrace();
+            return;
         }
+
+        // forget the handle too, or later lookups keep finding a table that is gone
+        tables.remove(tableName);
     }
 
     public Table getTable(String tableName) {
